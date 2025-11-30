@@ -28,6 +28,16 @@ yarn-error.log*
 .env*.local
 .env
 
+# Google service account keys (NEVER commit these!)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.js
+!postcss.config.js
+!tailwind.config.ts
+!.eslintrc.json
+
 # vercel
 .vercel
 
