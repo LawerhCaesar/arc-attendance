@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 
 interface RepeatVisitor {
   name: string;
-  email: string;
+  phone: string;
   count: number;
   lastVisit: string;
 }
@@ -80,7 +80,7 @@ export default function RepeatVisitorsTable() {
                   Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
+                  Phone
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Visit Count
@@ -97,7 +97,7 @@ export default function RepeatVisitorsTable() {
                     {visitor.name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {visitor.email}
+                    {visitor.phone}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">

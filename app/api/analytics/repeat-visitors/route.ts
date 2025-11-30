@@ -11,22 +11,24 @@ export async function GET() {
 
     const data = await getAttendanceData();
 
-    // Count visits per email
-    const visitorCounts: Record<string, { name: string; email: string; count: number; lastVisit: string }> = {};
+    // Count visits per phone number
+    const visitorCounts: Record<string, { name: string; phone: string; count: number; lastVisit: string }> = {};
     
     data.forEach(record => {
-      const email = record.email.toLowerCase();
-      if (!visitorCounts[email]) {
-        visitorCounts[email] = {
+      const phone = record.phone.toLowerCase().trim();
+      if (!phone) return; // Skip records without phone
+      
+      if (!visitorCounts[phone]) {
+        visitorCounts[phone] = {
           name: record.name,
-          email: record.email,
+          phone: record.phone,
           count: 0,
           lastVisit: record.date,
         };
       }
-      visitorCounts[email].count++;
-      if (record.date > visitorCounts[email].lastVisit) {
-        visitorCounts[email].lastVisit = record.date;
+      visitorCounts[phone].count++;
+      if (record.date > visitorCounts[phone].lastVisit) {
+        visitorCounts[phone].lastVisit = record.date;
       }
     });
 

@@ -12,7 +12,7 @@ export async function GET() {
     const data = await getAttendanceData();
 
     const totalAttendance = data.length;
-    const uniqueVisitors = new Set(data.map(record => record.email.toLowerCase())).size;
+    const uniqueVisitors = new Set(data.map(record => record.phone.toLowerCase().trim()).filter(phone => phone)).size;
     const repeatVisitors = totalAttendance - uniqueVisitors;
 
     // Calculate attendance by date
