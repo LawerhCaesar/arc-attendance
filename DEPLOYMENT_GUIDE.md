@@ -6,7 +6,7 @@ This guide explains how to host your Church Attendance System application.
 
 **Static hosting (like GitHub Pages, Netlify Static, etc.) will NOT work** because this app requires:
 - Server-side API routes (attendance, authentication)
-- Server-side Google Sheets API integration
+- MongoDB database connection
 - Environment variables for secure credential storage
 - Session management for authentication
 
@@ -31,15 +31,18 @@ Vercel is the company behind Next.js and provides the best hosting experience.
 In the Vercel project settings, add these environment variables:
 
 ```
-GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id_here
-GOOGLE_SERVICE_ACCOUNT_EMAIL=arc-attendance@cobalt-mind-471613-p5.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDgHuFY0qM9DFOR\nr5A/xTTGlhoDFDb4Pvr5xxGEc6N6ARbkBm58aRzjN1E5O1PoaqeL6NywHDj0//SW\nnHaaHYZ7+uK+a94QeGeHjgSIlHgpmnFbBoqXYnw87SvZQ9frX0wotV23kEEUL9Bw\nf3qvSf/4qj/4/zSn6eqnjJItT2qS91xoFZh7WfO+uWO7kATY7F+Oc9gTt/hUSyoc\nAnlP1J29uub2nkU4uVbbbkbzyB5LT985oVud82eYNPBeDvHsm1/QKqQEa+cpQt1H\naVdpA3snXAvMq9lqK6Gyvrwf9/dVRxB4fcSY+sJ4EzI4lEmDJ6fgK9BIU50Hg3tA\nrpAyky+fAgMBAAECggEAGgFrS4exelF2VvbEqamj3JEpNoc/c6G3NIl1TmWup+b9\ndXsLkfMOb40JJzdrnpHVnCXqiaLUtxUGF/3Sw0I+yx8K9WaFz2pxNOj1PLXhlY4+\nrf290iAS42zvxBebs8uMhkK5O6YI7yM3L/6SyUkwYvW6U5WlUgCSAlwM0CYhaykC\nBynLBudb1z9KMO84tleMMB3aNCfKhJNph06y/flepe5SG4XM+4B78d1g0xnj3+AX\nE38GDE6izx1V6hA+FiWDRFENL9zkngkRoMPczxLLJeod7R1GuUJGkSkhWqA6TMMD\n8p00R4MhVraWjZXIUvUYefBn6S2sDsImfd64c9SU/QKBgQD+X4mTSDR15OLss8zr\nsjTOfB/Fazv5LnTh8vYjssgVEKws4WnYUDf2GHTc04ui4DCLnAcYlPNPH3c++sUz\n1cWP0uZoqhOJ7q2Hd0+DRippJAxqV/XFjIZALM/mW/ELTLR3YLchrMyom4VlIWqP\nUzbV5WdVvGCwqdlUnsRnM+zEjQKBgQDhjdAiMeebwhD+DNktVLGXG9qikppONnyD\nN4hxzS08EBUBBMvqHMDjLp8rzBXNe6cYplXJh5a0pgxZOXjEOEb+ow1o0cQ5pepm\nOtV0Oo+bgfbHeM+8ODyStXXUCkxoVtTb7c7r4fL9119AVZUEtj8+T16qiEKICCZ/\nkqQLHa/32wKBgQCHjIt4M3LZHAYckldxhb4EBjq77b/AshPQz7KAJWXfa8oEBH5t\nqZmYh0HG5uey/HqB+rwBSmY5VJArvF/XlmO3l2/2eCL/TnOkC10QnBQ/gNko1gR+\np7pmejqzC21wUwib0Krlw/ovIui7kkoBZBuFccBV/JMdsPTB1fTc9duGhQKBgQCq\nKTSWN5QFm/j50HOfkT+RQoBFGdiznMN+ssyLHkE8CN3vsNCtxBd4zNlkT0k7hkff\nfs1FhrcZfhPe1E7ZqaNVw2kAZRBmdVdK3KPgVbW1mey1O91sn/iCrcdAuqw+IxPe\n/5+VsRaCjpLblDUiIuO/fF1sxfN7cLqqj9SWVkVE9QKBgQC+G3p+Y2JvM8bbW1kT\ngX9mof6P6XFjDzWARraAtQ3Opz+34iSGNf58HiRuo9kuOyz7iUUDghWQhva82Pd8\nmac5b5T8+h84W1aG/+LC0L9WOTlX5O3TRoTW6lPLcYX8gPCzQLtLcY/13aO8qg1V\nTO9Jq3NF+IBWOotnG+ve6Pi/tw==\n-----END PRIVATE KEY-----\n"
+MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/attendance_db?retryWrites=true&w=majority
+MONGODB_DB_NAME=attendance_db
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_secure_password_here
 ADMIN_SESSION_SECRET=generate_a_random_string_here
+NEXT_PUBLIC_APP_URL=https://your-project-name.vercel.app
 ```
 
-**Important**: Copy the exact values from your `.env.local` file.
+**Important**: 
+- Replace `MONGODB_URI` with your actual MongoDB Atlas connection string
+- For local MongoDB: `mongodb://localhost:27017/attendance_db`
+- Copy the exact values from your `.env.local` file
 
 ### Step 4: Deploy
 
@@ -119,12 +122,12 @@ docker run -p 3000:3000 --env-file .env.local attendance-app
 
 Make sure these are set in your hosting platform:
 
-- ✅ `GOOGLE_SHEETS_SPREADSHEET_ID`
-- ✅ `GOOGLE_SERVICE_ACCOUNT_EMAIL`
-- ✅ `GOOGLE_PRIVATE_KEY` (keep the quotes and `\n` characters)
+- ✅ `MONGODB_URI` (your MongoDB connection string)
+- ✅ `MONGODB_DB_NAME` (database name, e.g., `attendance_db`)
 - ✅ `ADMIN_USERNAME`
 - ✅ `ADMIN_PASSWORD`
 - ✅ `ADMIN_SESSION_SECRET`
+- ✅ `NEXT_PUBLIC_APP_URL` (your deployment URL)
 
 ---
 
@@ -147,13 +150,15 @@ Make sure these are set in your hosting platform:
 
 ### API Routes Not Working
 - Ensure environment variables are set correctly
-- Check that Google Sheets credentials are valid
-- Verify the Google Sheet is shared with service account
+- Check that MongoDB connection string is valid
+- Verify MongoDB network access is configured (for Atlas)
+- Check MongoDB service is running (for local)
 
-### Google Sheets Access Issues
-- Double-check service account email is correct
-- Verify sheet is shared with Editor permissions
-- Check spreadsheet ID is correct
+### MongoDB Connection Issues
+- Verify MongoDB URI format is correct
+- Check MongoDB Atlas network access allows connections (0.0.0.0/0 for all)
+- Ensure username and password in connection string are correct
+- For local MongoDB, verify the service is running and accessible
 
 ---
 
@@ -172,11 +177,16 @@ vercel login
 vercel
 
 # Set environment variables
-vercel env add GOOGLE_SHEETS_SPREADSHEET_ID
-vercel env add GOOGLE_SERVICE_ACCOUNT_EMAIL
-vercel env add GOOGLE_PRIVATE_KEY
-# ... etc
+vercel env add MONGODB_URI
+vercel env add MONGODB_DB_NAME
+vercel env add ADMIN_USERNAME
+vercel env add ADMIN_PASSWORD
+vercel env add ADMIN_SESSION_SECRET
+vercel env add NEXT_PUBLIC_APP_URL
 ```
 
 This will give you a production URL like: `https://your-app.vercel.app`
+
+
+
 

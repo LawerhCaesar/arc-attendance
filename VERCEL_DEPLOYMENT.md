@@ -70,9 +70,8 @@ vercel
 3. Add each variable:
 
 ```
-GOOGLE_SHEETS_SPREADSHEET_ID
-GOOGLE_SERVICE_ACCOUNT_EMAIL
-GOOGLE_PRIVATE_KEY
+MONGODB_URI
+MONGODB_DB_NAME
 ADMIN_USERNAME
 ADMIN_PASSWORD
 ADMIN_SESSION_SECRET
@@ -80,12 +79,13 @@ NEXT_PUBLIC_APP_URL
 ```
 
 4. Copy values from your `.env.local` file
-5. **Important for GOOGLE_PRIVATE_KEY**: 
-   - Keep the quotes
-   - Keep the `\n` characters
-   - Paste the entire key including BEGIN/END lines
+5. **Important for MONGODB_URI**: 
+   - Use your MongoDB Atlas connection string or local MongoDB URI
+   - Format: `mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/attendance_db?retryWrites=true&w=majority`
+   - For local: `mongodb://localhost:27017/attendance_db`
 
 6. Click **"Save"** for each variable
+7. Select environments (Production, Preview, Development) for each variable
 
 ## Step 5: Redeploy
 
@@ -121,13 +121,15 @@ Once connected:
 
 ### API Routes Not Working
 - Ensure all environment variables are set
-- Check that Google Sheets credentials are correct
-- Verify the Google Sheet is shared with service account
+- Check that MongoDB connection string is correct
+- Verify MongoDB network access is configured (for Atlas)
+- Check MongoDB service is running (for local)
 
 ### Environment Variables Not Working
 - Make sure you added them in Vercel dashboard (not just locally)
 - Redeploy after adding variables
 - Check variable names match exactly (case-sensitive)
+- Ensure MongoDB URI is properly formatted
 
 ## Quick Commands Reference
 
@@ -151,10 +153,14 @@ vercel --prod
 ## Next Steps After Deployment
 
 1. Test your live site
-2. Verify Google Sheets integration works
+2. Verify MongoDB connection works
 3. Test attendance submission
 4. Test admin login
-5. Set up custom domain if needed
+5. Verify analytics are working
+6. Set up custom domain if needed
 
 Your app will be live at: `https://your-project-name.vercel.app`
+
+
+
 

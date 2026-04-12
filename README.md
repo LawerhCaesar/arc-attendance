@@ -1,11 +1,11 @@
 # Church Attendance Web App
 
-A Next.js full-stack application for recording and tracking Sunday service attendance with direct Google Sheets integration and an admin dashboard for analytics.
+A Next.js full-stack application for recording and tracking Sunday service attendance with MongoDB database integration and an admin dashboard for analytics.
 
 ## Features
 
-- **Public Entry Form**: Record attendance with name, phone, email, location, and birthday
-- **Google Sheets Integration**: Direct data entry into Google Sheets
+- **Public Entry Form**: Record attendance with name, phone, location, birthday, and fellowship
+- **MongoDB Database**: Scalable NoSQL database for storing attendance records
 - **Admin Dashboard**: Protected admin area with comprehensive analytics
 - **Analytics & Charts**: 
   - Total attendance statistics
@@ -17,8 +17,7 @@ A Next.js full-stack application for recording and tracking Sunday service atten
 ## Prerequisites
 
 - Node.js 18+ and npm
-- Google Cloud Project with Sheets API enabled
-- Google Service Account credentials
+- MongoDB database (local or MongoDB Atlas cloud)
 
 ## Setup Instructions
 
@@ -28,39 +27,22 @@ A Next.js full-stack application for recording and tracking Sunday service atten
 npm install
 ```
 
-### 2. Google Sheets API Setup
+### 2. MongoDB Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the Google Sheets API
-4. Create a Service Account:
-   - Go to "IAM & Admin" > "Service Accounts"
-   - Click "Create Service Account"
-   - Give it a name and create
-   - Click on the service account, go to "Keys" tab
-   - Click "Add Key" > "Create new key" > JSON
-   - Save the JSON file securely
+See [MONGODB_SETUP.md](./MONGODB_SETUP.md) for detailed MongoDB setup instructions.
 
-5. Create a Google Sheet:
-   - Create a new Google Sheet
-   - Share it with the service account email (found in the JSON file)
-   - Copy the Spreadsheet ID from the URL (between `/d/` and `/edit`)
+**Quick Start:**
+- **Option 1 (Recommended)**: Use [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) (free cloud database)
+- **Option 2**: Install MongoDB locally on your machine
 
 ### 3. Environment Variables
 
-Copy `.env.example` to `.env` and fill in the values:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your credentials:
+Create a `.env.local` file in the project root:
 
 ```env
-# Google Sheets API Configuration
-GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id_here
-GOOGLE_SERVICE_ACCOUNT_EMAIL=your_service_account_email@project.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour private key here\n-----END PRIVATE KEY-----\n"
+# MongoDB Configuration
+MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/attendance_db?retryWrites=true&w=majority
+MONGODB_DB_NAME=attendance_db
 
 # Admin Authentication
 ADMIN_USERNAME=admin
@@ -72,12 +54,21 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 **Important Notes:**
-- Extract the `private_key` from your service account JSON file
-- Keep the `\n` characters in the private key
+- Replace `MONGODB_URI` with your actual MongoDB connection string
+- For local MongoDB, use: `mongodb://localhost:27017/attendance_db`
 - Generate a secure random string for `ADMIN_SESSION_SECRET`
 - Change `ADMIN_PASSWORD` to a secure password
+- The database will be created automatically on first connection
 
-### 4. Run the Development Server
+### 4. Initialize Database Indexes (Optional but Recommended)
+
+Run this once to create indexes for better query performance:
+
+```bash
+npx tsx scripts/init-db.ts
+```
+
+### 5. Run the Development Server
 
 ```bash
 npm run dev
@@ -89,15 +80,16 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Recording Attendance
 
-1. Navigate to `/entry` or use the "Record Attendance" link
+1. Navigate to `/entry` or use the "Mark Attendance" link
 2. Fill in the form with:
    - Name
    - Phone number
-   - Email address
    - Location
    - Birthday
+   - Fellowship
+   - First timer status
 3. Click "Submit Attendance"
-4. Data is automatically saved to your Google Sheet
+4. Data is automatically saved to your MongoDB database
 
 ### Admin Dashboard
 
@@ -140,13 +132,33 @@ npm run build
 npm start
 ```
 
+## Database Schema
+
+The attendance records are stored in MongoDB with the following structure:
+
+```typescript
+{
+  date: string;              // Date in YYYY-MM-DD format
+  name: string;              // Attendee name
+  phone: string;             // Phone number
+  location: string;          // Location/address
+  birthday: string;          // Birthday date
+  fellowship: string;        // Fellowship group
+  firstTimer: string;        // "Yes" or "No"
+  attendanceDate?: string;   // Optional attendance date
+  attendanceStatus?: string; // Optional status
+  createdAt: Date;           // Automatic timestamp
+}
+```
+
 ## Security Notes
 
 - Change default admin credentials before deploying
 - Use environment variables for all sensitive data
 - Consider using a proper session store (Redis, database) for production
 - Enable HTTPS in production
-- Regularly rotate your Google Service Account keys
+- Secure your MongoDB connection (use MongoDB Atlas IP whitelist for production)
+- Regularly rotate your admin passwords
 
 ## License
 
