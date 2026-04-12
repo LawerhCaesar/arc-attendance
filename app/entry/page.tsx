@@ -56,6 +56,116 @@ const designationColors: Record<string, string> = {
   'Member': 'bg-gray-100 text-gray-700',
 };
 
+// ─── Fancy Birthday Picker ─────────────────────────────────────────────────────
+
+const FancyBirthdayPicker = ({ value, onChange, disabled }: { value: string, onChange: (val: string) => void, disabled: boolean }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Parse existing
+  let initialDay = '01';
+  let initialMonth = '01';
+  if (value && value.includes('-')) {
+    const parts = value.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      initialMonth = parts[1];
+      initialDay = parts[2];
+    } else {
+      initialDay = parts[0];
+      initialMonth = parts[1];
+    }
+  }
+
+  const [selMonth, setSelMonth] = useState(initialMonth);
+  const [selDay, setSelDay] = useState(initialDay);
+
+  const months = [
+    { num: '01', name: 'Jan' }, { num: '02', name: 'Feb' }, { num: '03', name: 'Mar' },
+    { num: '04', name: 'Apr' }, { num: '05', name: 'May' }, { num: '06', name: 'Jun' },
+    { num: '07', name: 'Jul' }, { num: '08', name: 'Aug' }, { num: '09', name: 'Sep' },
+    { num: '10', name: 'Oct' }, { num: '11', name: 'Nov' }, { num: '12', name: 'Dec' },
+  ];
+
+  const days = Array.from({length: 31}, (_, i) => String(i + 1).padStart(2, '0'));
+
+  const handleSave = () => {
+    onChange(`${selDay}-${selMonth}`);
+    setIsOpen(false);
+  };
+
+  const displayString = value ? (
+    value.split('-')[0]?.length === 4
+       ? `${value.split('-')[2]} ${months.find(m => m.num === value.split('-')[1])?.name}`
+       : `${value.split('-')[0]} ${months.find(m => m.num === value.split('-')[1])?.name || value.split('-')[1]}`
+  ) : "Select...";
+
+  return (
+    <>
+      <div 
+        onClick={() => !disabled && setIsOpen(true)}
+        className={`w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none flex justify-between items-center transition ${!disabled ? 'bg-white cursor-pointer hover:border-blue-400' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
+        style={{ minHeight: '30px' }}
+      >
+        <span className="truncate mr-2">{value ? displayString : 'DD-MM'}</span>
+        <span className="text-gray-400 text-xs">📅</span>
+      </div>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div 
+            className="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-sm transform transition-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="font-bold text-gray-900 text-lg">Select Birthday</h3>
+              <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-700 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center transition">✕</button>
+            </div>
+            
+            <div className="mb-5">
+              <label className="text-xs font-bold text-gray-500 mb-2 block uppercase tracking-wider">Month</label>
+              <div className="grid grid-cols-4 gap-2">
+                {months.map(m => (
+                  <button
+                    key={m.num}
+                    onClick={() => setSelMonth(m.num)}
+                    className={`py-2 rounded-lg text-sm font-medium transition ${selMonth === m.num ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-gray-50 text-gray-700 hover:bg-gray-200'}`}
+                  >
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-500 mb-2 block uppercase tracking-wider">Day</label>
+              <div className="grid grid-cols-7 gap-1">
+                {days.map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setSelDay(d)}
+                    className={`aspect-square flex items-center justify-center rounded-lg text-sm font-medium transition ${selDay === d ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'hover:bg-gray-100 text-gray-700'}`}
+                  >
+                    {parseInt(d, 10)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setIsOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition">Cancel</button>
+              <button 
+                onClick={handleSave}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition shadow-lg shadow-blue-200"
+              >
+                Save Date
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function EntryPage() {
@@ -593,7 +703,7 @@ export default function EntryPage() {
                               <input type="tel" value={entry.phone} onChange={e => handleCellChange(entry.id, 'phone', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Phone number" />
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
-                              <input type="date" value={entry.birthday} onChange={e => handleCellChange(entry.id, 'birthday', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} />
+                              <FancyBirthdayPicker value={entry.birthday} onChange={(val: string) => handleCellChange(entry.id, 'birthday', val)} disabled={!isEditing} />
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
                               <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
