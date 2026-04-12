@@ -221,10 +221,12 @@ export default function EntryPage() {
   };
 
   const addRow = () => {
+    const newId = Date.now().toString();
     setEntries([{
-      id: Date.now().toString(),
+      id: newId,
       name: '', phone: '', location: '', birthday: '', fellowship: '', designation: 'Member', firstTimer: false,
     }, ...entries]);
+    setEditingId(newId);
   };
 
   const removeRow = (id: string) => {
@@ -591,7 +593,7 @@ export default function EntryPage() {
                               <input type="tel" value={entry.phone} onChange={e => handleCellChange(entry.id, 'phone', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Phone number" />
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
-                              <input type="text" value={entry.birthday} onChange={e => handleCellChange(entry.id, 'birthday', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="DD-MM" />
+                              <input type="date" value={entry.birthday} onChange={e => handleCellChange(entry.id, 'birthday', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} />
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
                               <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />

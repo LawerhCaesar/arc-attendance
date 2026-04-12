@@ -32,8 +32,9 @@ export default function AttendanceTrends() {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <div className="text-gray-600">Loading trends...</div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-8 animate-pulse">
+        <div className="h-6 w-48 bg-gray-200 rounded mb-4" />
+        <div className="h-[300px] w-full bg-gray-100 rounded-lg" />
       </div>
     );
   }
@@ -47,9 +48,9 @@ export default function AttendanceTrends() {
   })) || [];
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-gray-800">Attendance Trends</h2>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-8">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-bold text-gray-900">Attendance Trends</h2>
         <div className="flex space-x-2">
           <button
             onClick={() => setActivePeriod('weekly')}
@@ -77,15 +78,16 @@ export default function AttendanceTrends() {
       {chartData.length > 0 ? (
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
             <XAxis 
               dataKey="date" 
               angle={-45}
               textAnchor="end"
               height={80}
+              axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}}
             />
-            <YAxis />
-            <Tooltip />
+            <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
+            <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}} />
             <Legend />
             <Line 
               type="monotone" 
@@ -102,21 +104,22 @@ export default function AttendanceTrends() {
 
       {/* Bar chart for comparison */}
       {chartData.length > 0 && (
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Attendance by {activePeriod === 'weekly' ? 'Week' : 'Month'}</h3>
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <h3 className="text-lg font-bold text-gray-900 mb-6">Attendance by {activePeriod === 'weekly' ? 'Week' : 'Month'}</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
               <XAxis 
                 dataKey="date" 
                 angle={-45}
                 textAnchor="end"
                 height={80}
+                axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}}
               />
-              <YAxis />
-              <Tooltip />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
+              <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}} />
               <Legend />
-              <Bar dataKey="attendance" fill="#3b82f6" name="Attendance" />
+              <Bar dataKey="attendance" fill="#8b5cf6" name="Attendance" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

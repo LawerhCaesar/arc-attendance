@@ -22,46 +22,39 @@ export async function GET() {
       .map(([location, count]) => ({ location, count }))
       .sort((a, b) => b.count - a.count);
 
-    // Age demographics (calculate from birthday)
-    const ageGroups: Record<string, number> = {
-      '0-17': 0,
-      '18-25': 0,
-      '26-35': 0,
-      '36-50': 0,
-      '51-65': 0,
-      '66+': 0,
-    };
+    // Birthday demographics (by month)
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const birthdayMonths: Record<string, number> = {};
+    monthNames.forEach(m => birthdayMonths[m] = 0);
 
-    const today = new Date();
     data.forEach(record => {
       if (record.birthday) {
-        try {
-          const birthDate = new Date(record.birthday);
-          const age = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
-          const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) 
-            ? age - 1 
-            : age;
-
-          if (actualAge <= 17) ageGroups['0-17']++;
-          else if (actualAge <= 25) ageGroups['18-25']++;
-          else if (actualAge <= 35) ageGroups['26-35']++;
-          else if (actualAge <= 50) ageGroups['36-50']++;
-          else if (actualAge <= 65) ageGroups['51-65']++;
-          else ageGroups['66+']++;
-        } catch {
-          // Invalid date, skip
+        const parts = record.birthday.split('-');
+        if (parts.length === 2) {
+          const monthIndex = parseInt(parts[1], 10) - 1;
+          if (monthIndex >= 0 && monthIndex < 12) {
+            birthdayMonths[monthNames[monthIndex]]++;
+          }
+        } else if (record.birthday.includes('/')) {
+            const parts = record.birthday.split('/');
+            if (parts.length === 2) {
+                const monthIndex = parseInt(parts[1], 10) - 1;
+                if (monthIndex >= 0 && monthIndex < 12) {
+                    birthdayMonths[monthNames[monthIndex]]++;
+                }
+            }
         }
       }
     });
 
-    const ageData = Object.entries(ageGroups)
-      .map(([ageGroup, count]) => ({ ageGroup, count }))
-      .filter(item => item.count > 0);
+    const birthdayData = monthNames.map(month => ({
+      month,
+      count: birthdayMonths[month]
+    })).filter(item => item.count > 0);
 
     return NextResponse.json({
       locations: locationData,
-      ageGroups: ageData,
+      birthdays: birthdayData,
     });
   } catch (error: any) {
     console.error('Error fetching demographics:', error);

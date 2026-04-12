@@ -9,15 +9,19 @@ import FellowshipBreakdown from '@/components/FellowshipBreakdown';
 import CellLeaderStats from '@/components/CellLeaderStats';
 import MemberRoster from '@/components/MemberRoster';
 import RawDataTable from '@/components/RawDataTable';
+import DemographicsCharts from '@/components/DemographicsCharts';
+import RepeatVisitorsTable from '@/components/RepeatVisitorsTable';
 
-type AdminTab = 'overview' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
+type AdminTab = 'overview' | 'demographics' | 'visitors' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',      label: 'Overview',        icon: '📊' },
-  { id: 'fellowship',    label: 'By Fellowship',    icon: '🏛️' },
-  { id: 'cell-leaders',  label: 'Cell Leaders',     icon: '👥' },
-  { id: 'members',       label: 'Member Roster',    icon: '📋' },
-  { id: 'raw-data',      label: 'Raw Data',         icon: '🗃️' },
+  { id: 'demographics',  label: 'Demographics',    icon: '🎂' },
+  { id: 'visitors',      label: 'Visitor Analysis',icon: '🔄' },
+  { id: 'fellowship',    label: 'By Fellowship',   icon: '🏛️' },
+  { id: 'cell-leaders',  label: 'Cell Leaders',    icon: '👥' },
+  { id: 'members',       label: 'Member Roster',   icon: '📋' },
+  { id: 'raw-data',      label: 'Raw Data',        icon: '🗃️' },
 ];
 
 export default function AdminDashboard() {
@@ -113,6 +117,26 @@ export default function AdminDashboard() {
             </div>
             <DashboardStats />
             <AttendanceTrends />
+          </div>
+        )}
+
+        {activeTab === 'demographics' && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Demographics & Birthdays</h2>
+              <p className="text-gray-500 text-sm mt-1">Insights on attendance locations and upcoming birthdays</p>
+            </div>
+            <DemographicsCharts />
+          </div>
+        )}
+
+        {activeTab === 'visitors' && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Repeat Visitor Analysis</h2>
+              <p className="text-gray-500 text-sm mt-1">Track returning visitors and their attendance frequency</p>
+            </div>
+            <RepeatVisitorsTable />
           </div>
         )}
 

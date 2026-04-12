@@ -5,7 +5,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 
 interface DemographicsData {
   locations: Array<{ location: string; count: number }>;
-  ageGroups: Array<{ ageGroup: string; count: number }>;
+  birthdays: Array<{ month: string; count: number }>;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -29,16 +29,17 @@ export default function DemographicsCharts() {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <div className="text-gray-600">Loading demographics...</div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 animate-pulse h-[300px]" />
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 animate-pulse h-[300px]" />
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <div className="text-red-600">Failed to load demographics</div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-8">
+        <div className="text-red-500">Failed to load demographics</div>
       </div>
     );
   }
@@ -46,9 +47,9 @@ export default function DemographicsCharts() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       {/* Location Pie Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Attendance by Location</h2>
-        {data.locations.length > 0 ? (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Attendance by Location</h2>
+        {data.locations && data.locations.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
               <Pie
@@ -69,26 +70,25 @@ export default function DemographicsCharts() {
             </PieChart>
           </ResponsiveContainer>
         ) : (
-          <div className="text-gray-500 text-center py-8">No location data available</div>
+          <div className="text-gray-400 text-center flex items-center justify-center h-[300px]">No location data available</div>
         )}
       </div>
 
-      {/* Age Group Bar Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Age Distribution</h2>
-        {data.ageGroups.length > 0 ? (
+      {/* Birthdays Bar Chart */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Upcoming Birthdays by Month</h2>
+        {data.birthdays && data.birthdays.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.ageGroups}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="ageGroup" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="count" fill="#3b82f6" name="Count" />
+            <BarChart data={data.birthdays}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
+              <YAxis axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12}} />
+              <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'}} />
+              <Bar dataKey="count" fill="#ec4899" name="Members" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="text-gray-500 text-center py-8">No age data available</div>
+          <div className="text-gray-400 text-center flex items-center justify-center h-[300px]">No birthday data available</div>
         )}
       </div>
     </div>
