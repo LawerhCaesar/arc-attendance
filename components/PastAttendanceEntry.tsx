@@ -191,25 +191,49 @@ export default function PastAttendanceEntry() {
   
   const [selectedDateIso, setSelectedDateIso] = useState<string>(sundays.length > 0 ? formatDateIso(sundays[0]) : '');
   
-  const [entries, setEntries] = useState<AttendanceEntry[]>([{
-    id: Date.now().toString(),
-    name: '', phone: '', location: '', birthday: '', fellowship: '', designation: 'Member', firstTimer: false,
-  }]);
+  const [entries, setEntries] = useState<AttendanceEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [markedPresent, setMarkedPresent] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
 
+  const fetchMembers = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/members');
+      if (res.ok) {
+        const data = await res.json();
+        const formatted = data.map((m: any) => ({
+          id: m.id || Date.now().toString() + Math.random(),
+          name: m.name,
+          phone: m.phone,
+          location: m.location,
+          birthday: m.birthday,
+          fellowship: m.fellowship,
+          designation: m.designation || 'Member',
+          firstTimer: false,
+        }));
+        setEntries(formatted);
+      }
+    } catch (e) {
+      console.error(e);
+      setMessage({ type: 'error', text: 'Failed to load members from database.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMembers();
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Clear state when selected date changes to avoid accidental submissions
   const handleDateChange = (isoDate: string) => {
     setSelectedDateIso(isoDate);
-    setEntries([{
-      id: Date.now().toString(),
-      name: '', phone: '', location: '', birthday: '', fellowship: '', designation: 'Member', firstTimer: false,
-    }]);
     setMarkedPresent(new Set());
     setMessage(null);
   };
@@ -271,18 +295,16 @@ export default function PastAttendanceEntry() {
     setIsSubmitting(true);
     setMessage(null);
 
-    const marked = entries.filter(e =>
-      markedPresent.has(e.id) && e.name.trim()
-    );
+    const validEntries = entries.filter(e => e.name.trim());
 
-    if (marked.length === 0) {
-      setMessage({ type: 'error', text: 'Please mark at least one entry as present.' });
+    if (validEntries.length === 0) {
+      setMessage({ type: 'error', text: 'No entries to submit.' });
       setIsSubmitting(false);
       return;
     }
 
     try {
-      const responses = await Promise.all(marked.map(e =>
+      const responses = await Promise.all(validEntries.map(e =>
         fetch('/api/attendance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -290,7 +312,8 @@ export default function PastAttendanceEntry() {
             name: e.name, phone: e.phone, location: e.location,
             birthday: e.birthday, fellowship: e.fellowship,
             designation: e.designation, firstTimer: e.firstTimer,
-            attendanceDate: selectedDateIso, attendanceStatus: 'present',
+            attendanceDate: selectedDateIso, 
+            attendanceStatus: markedPresent.has(e.id) ? 'present' : 'absent',
           }),
         })
       ));
@@ -299,15 +322,10 @@ export default function PastAttendanceEntry() {
       if (hasError) {
         setMessage({ type: 'error', text: 'Some entries failed to submit. Please try again.' });
       } else {
-        setMessage({ type: 'success', text: `${marked.length} record(s) submitted successfully for ${selectedDateIso}!` });
-        const remaining = entries.filter(e => !markedPresent.has(e.id));
-        setEntries(remaining.length === 0 ? [{
-          id: Date.now().toString(),
-          name: '', phone: '', location: '', birthday: '', fellowship: '', designation: 'Member', firstTimer: false,
-        }] : remaining);
-        const newMarked = new Set(markedPresent);
-        marked.forEach(e => newMarked.delete(e.id));
-        setMarkedPresent(newMarked);
+        const presentCount = validEntries.filter(e => markedPresent.has(e.id)).length;
+        const absentCount = validEntries.length - presentCount;
+        setMessage({ type: 'success', text: `Submitted successfully for ${selectedDateIso}: ${presentCount} present, ${absentCount} absent.` });
+        setMarkedPresent(new Set());
       }
     } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
@@ -469,6 +487,11 @@ export default function PastAttendanceEntry() {
         </div>
       )}
 
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      ) : (
       <div className="overflow-x-auto border border-gray-300 rounded-lg">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -564,6 +587,7 @@ export default function PastAttendanceEntry() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
