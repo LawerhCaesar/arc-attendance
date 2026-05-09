@@ -119,7 +119,14 @@ export async function getMembers(
     .order('fellowship')
     .order('name');
 
-  if (designation) query = query.eq('designation', designation);
+  if (designation) {
+    if (designation.includes(',')) {
+      const designationsList = designation.split(',').map(d => d.trim());
+      query = query.in('designation', designationsList);
+    } else {
+      query = query.eq('designation', designation);
+    }
+  }
   if (fellowship) query = query.eq('fellowship', fellowship);
 
   const { data, error } = await query;
@@ -146,6 +153,46 @@ export async function createMember(
   }
 
   return data;
+}
+
+/** Auto-sync Member from Attendance */
+export async function syncMemberFromAttendance(record: AttendanceRecord): Promise<void> {
+  if (!record.name) return;
+  
+  let query = supabase
+    .from(MEMBERS_TABLE)
+    .select('id')
+    .ilike('name', record.name);
+
+  if (record.fellowship) {
+    query = query.eq('fellowship', record.fellowship);
+  }
+
+  const { data: existing } = await query.maybeSingle();
+
+  if (!existing) {
+    await createMember({
+      name: record.name,
+      phone: record.phone || '',
+      fellowship: record.fellowship,
+      designation: record.designation || 'Member',
+      birthday: record.birthday || '',
+      location: record.location || '',
+    });
+  } else {
+    const updatePayload: any = {};
+    if (record.designation) updatePayload.designation = record.designation;
+    if (record.phone) updatePayload.phone = record.phone;
+    if (record.location) updatePayload.location = record.location;
+    if (record.birthday) updatePayload.birthday = record.birthday;
+    
+    if (Object.keys(updatePayload).length > 0) {
+      await supabase
+        .from(MEMBERS_TABLE)
+        .update({ ...updatePayload, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+    }
+  }
 }
 
 /** Update an existing member */

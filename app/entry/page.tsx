@@ -92,21 +92,26 @@ const FancyBirthdayPicker = ({ value, onChange, disabled }: { value: string, onC
     setIsOpen(false);
   };
 
-  const displayString = value ? (
-    value.split('-')[0]?.length === 4
-       ? `${value.split('-')[2]} ${months.find(m => m.num === value.split('-')[1])?.name}`
-       : `${value.split('-')[0]} ${months.find(m => m.num === value.split('-')[1])?.name || value.split('-')[1]}`
-  ) : "Select...";
-
   return (
     <>
       <div 
-        onClick={() => !disabled && setIsOpen(true)}
-        className={`w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none flex justify-between items-center transition ${!disabled ? 'bg-white cursor-pointer hover:border-blue-400' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
+        className={`w-full px-2 py-1 border border-gray-300 rounded text-sm focus-within:ring-1 focus-within:ring-blue-500 flex justify-between items-center transition ${!disabled ? 'bg-white hover:border-blue-400' : 'bg-gray-100 cursor-not-allowed text-gray-500'}`}
         style={{ minHeight: '30px' }}
       >
-        <span className="truncate mr-2">{value ? displayString : 'DD-MM'}</span>
-        <span className="text-gray-400 text-xs">📅</span>
+        <input 
+          type="text" 
+          value={value} 
+          onChange={(e) => onChange(e.target.value)} 
+          disabled={disabled}
+          placeholder="DD-MM"
+          className="w-full truncate mr-2 bg-transparent outline-none text-gray-900" 
+        />
+        <span 
+          onClick={() => !disabled && setIsOpen(true)}
+          className={`text-gray-400 text-xs ${!disabled ? 'cursor-pointer hover:text-blue-500' : ''}`}
+        >
+          📅
+        </span>
       </div>
 
       {isOpen && (
@@ -254,7 +259,7 @@ export default function EntryPage() {
   const fetchCellLeaders = async () => {
     setIsLoadingCL(true);
     try {
-      const res = await fetch('/api/members?designation=Cell Leader');
+      const res = await fetch('/api/members?designation=Cell Leader,Fellowship Leader');
       if (res.ok) {
         const data: RosterMember[] = await res.json();
         setCellLeaders(data);
@@ -277,7 +282,7 @@ export default function EntryPage() {
 
       const id = setTimeout(async () => {
         const absentEntries = entriesRef.current.filter(e =>
-          e.name.trim() && e.phone.trim() && e.fellowship.trim() &&
+          e.name.trim() &&
           !markedPresentRef.current.has(e.id)
         );
         if (absentEntries.length > 0) {
@@ -356,8 +361,7 @@ export default function EntryPage() {
     setMessage(null);
 
     const marked = entries.filter(e =>
-      markedPresent.has(e.id) && e.name.trim() && e.phone.trim() && e.location.trim() &&
-      e.birthday.trim() && e.fellowship.trim()
+      markedPresent.has(e.id) && e.name.trim()
     );
 
     if (marked.length === 0) {

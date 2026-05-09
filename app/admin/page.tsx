@@ -11,11 +11,13 @@ import MemberRoster from '@/components/MemberRoster';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
 import RepeatVisitorsTable from '@/components/RepeatVisitorsTable';
+import PastAttendanceEntry from '@/components/PastAttendanceEntry';
 
-type AdminTab = 'overview' | 'demographics' | 'visitors' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
+type AdminTab = 'overview' | 'past-entry' | 'demographics' | 'visitors' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',      label: 'Overview',        icon: '📊' },
+  { id: 'past-entry',    label: 'Past Entry',      icon: '📅' },
   { id: 'demographics',  label: 'Demographics',    icon: '🎂' },
   { id: 'visitors',      label: 'Visitor Analysis',icon: '🔄' },
   { id: 'fellowship',    label: 'By Fellowship',   icon: '🏛️' },
@@ -117,6 +119,12 @@ export default function AdminDashboard() {
             </div>
             <DashboardStats />
             <AttendanceTrends />
+          </div>
+        )}
+
+        {activeTab === 'past-entry' && (
+          <div>
+            <PastAttendanceEntry />
           </div>
         )}
 

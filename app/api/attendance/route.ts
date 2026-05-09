@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { appendAttendance, getAttendanceData } from '@/lib/database';
+import { appendAttendance, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,10 +16,10 @@ export async function POST(request: NextRequest) {
       attendanceStatus,
     } = body;
 
-    // Name and fellowship are required; phone/birthday/location optional for roster-based submissions
-    if (!name || !fellowship) {
+    // Name is required; fellowship/phone/birthday/location are optional
+    if (!name) {
       return NextResponse.json(
-        { error: 'Name and fellowship are required' },
+        { error: 'Name is required' },
         { status: 400 }
       );
     }
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       phone: (phone || '').trim(),
       location: (location || '').trim(),
       birthday: (birthday || '').trim(),
-      fellowship: fellowship.trim(),
+      fellowship: (fellowship || '').trim(),
       firstTimer: firstTimer === true || firstTimer === 'true' || firstTimer === 'yes' ? 'Yes' : 'No',
       designation: designation || 'Member',
       attendanceDate: attendanceDate || '',
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     };
 
     await appendAttendance(record);
+    await syncMemberFromAttendance(record);
 
     return NextResponse.json(
       { message: 'Attendance recorded successfully' },
