@@ -318,6 +318,25 @@ export default function PastAttendanceEntry() {
     });
   };
 
+  const removeDuplicates = () => {
+    const seen = new Set<string>();
+    const uniqueEntries = entries.filter(e => {
+      const nameKey = e.name.trim().toLowerCase();
+      if (!nameKey) return true; // keep empty rows
+      if (seen.has(nameKey)) return false;
+      seen.add(nameKey);
+      return true;
+    });
+
+    if (uniqueEntries.length < entries.length) {
+      const removedCount = entries.length - uniqueEntries.length;
+      setEntries(uniqueEntries);
+      setMessage({ type: 'success', text: `Removed ${removedCount} duplicate entries from the list.` });
+    } else {
+      setMessage({ type: 'success', text: 'No duplicates found in the list.' });
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedDateIso) {
       setMessage({ type: 'error', text: 'Please select a date first.' });
@@ -543,6 +562,9 @@ export default function PastAttendanceEntry() {
           </label>
           <button onClick={addRow} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm whitespace-nowrap">
             Add Row
+          </button>
+          <button onClick={removeDuplicates} className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 transition text-sm whitespace-nowrap">
+            Remove Duplicates
           </button>
           <button onClick={markAllPresent} className="px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded-md hover:bg-gray-50 transition text-sm whitespace-nowrap">
             Mark All Visible Present
