@@ -404,8 +404,26 @@ export default function PastAttendanceEntry() {
 
         if (imported.length === 0) { setMessage({ type: 'error', text: 'No valid entries found' }); return; }
         setEntries(imported);
-        setMessage({ type: 'success', text: `Imported ${imported.length} entries from Excel. Don't forget to mark present and submit!` });
-      } catch { setMessage({ type: 'error', text: 'Error parsing Excel file.' }); }
+        
+        // Sync to database immediately
+        fetch('/api/members/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ members: imported }),
+        })
+        .then(res => {
+          if (res.ok) {
+            setMessage({ type: 'success', text: `Imported and saved ${imported.length} entries to database. Don't forget to mark present and submit!` });
+          } else {
+            setMessage({ type: 'success', text: `Imported ${imported.length} entries to session, but database sync failed.` });
+          }
+        })
+        .catch(() => {
+          setMessage({ type: 'success', text: `Imported ${imported.length} entries to session, but database sync failed.` });
+        });
+      } catch {
+        setMessage({ type: 'error', text: 'Error parsing Excel file.' });
+      }
     };
     reader.readAsBinaryString(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
