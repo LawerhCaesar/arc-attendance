@@ -42,7 +42,6 @@ const MEMBERS_TABLE = 'members';
 
 // ─── Attendance ───────────────────────────────────────────
 
-/** Add a new attendance record to the database */
 export async function appendAttendance(record: AttendanceRecord): Promise<void> {
   const attendanceRecord = {
     ...record,
@@ -50,12 +49,41 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
     createdAt: new Date().toISOString(),
   };
 
-  const { error } = await supabase
-    .from(TABLE_NAME)
-    .insert([attendanceRecord]);
+  const targetDate = record.attendanceDate || record.date;
+  const dateField = record.attendanceDate ? 'attendanceDate' : 'date';
 
-  if (error) {
-    throw new Error(`Failed to insert record: ${error.message}`);
+  // Check if record exists
+  const { data: existing, error: fetchError } = await supabase
+    .from(TABLE_NAME)
+    .select('id')
+    .ilike('name', record.name)
+    .eq(dateField, targetDate)
+    .limit(1);
+
+  if (fetchError) {
+    throw new Error(`Failed to check existing record: ${fetchError.message}`);
+  }
+
+  if (existing && existing.length > 0) {
+    // Update existing record
+    const { createdAt, ...updatePayload } = attendanceRecord;
+    const { error: updateError } = await supabase
+      .from(TABLE_NAME)
+      .update(updatePayload)
+      .eq('id', existing[0].id);
+
+    if (updateError) {
+      throw new Error(`Failed to update record: ${updateError.message}`);
+    }
+  } else {
+    // Insert new
+    const { error: insertError } = await supabase
+      .from(TABLE_NAME)
+      .insert([attendanceRecord]);
+
+    if (insertError) {
+      throw new Error(`Failed to insert record: ${insertError.message}`);
+    }
   }
 }
 

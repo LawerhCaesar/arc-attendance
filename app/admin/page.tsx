@@ -12,12 +12,14 @@ import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
 import RepeatVisitorsTable from '@/components/RepeatVisitorsTable';
 import PastAttendanceEntry from '@/components/PastAttendanceEntry';
+import AbsenteeismTracker from '@/components/AbsenteeismTracker';
 
-type AdminTab = 'overview' | 'past-entry' | 'demographics' | 'visitors' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
+type AdminTab = 'overview' | 'past-entry' | 'absenteeism' | 'demographics' | 'visitors' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',      label: 'Overview',        icon: '📊' },
   { id: 'past-entry',    label: 'Past Entry',      icon: '📅' },
+  { id: 'absenteeism',   label: 'Absenteeism',     icon: '🚨' },
   { id: 'demographics',  label: 'Demographics',    icon: '🎂' },
   { id: 'visitors',      label: 'Visitor Analysis',icon: '🔄' },
   { id: 'fellowship',    label: 'By Fellowship',   icon: '🏛️' },
@@ -122,9 +124,19 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'past-entry' && (
+        { activeTab === 'past-entry' && (
           <div>
             <PastAttendanceEntry />
+          </div>
+        )}
+
+        {activeTab === 'absenteeism' && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Absenteeism Tracker</h2>
+              <p className="text-gray-500 text-sm mt-1">Track attendance consistency and flag inactive members</p>
+            </div>
+            <AbsenteeismTracker />
           </div>
         )}
 

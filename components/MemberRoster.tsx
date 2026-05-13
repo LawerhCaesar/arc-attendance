@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface Member {
   id: string;
@@ -38,6 +38,7 @@ export default function MemberRoster() {
   const [formError, setFormError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchMembers = useCallback(async () => {
     setIsLoading(true);
@@ -116,6 +117,96 @@ export default function MemberRoster() {
     setDeletingId(null);
   };
 
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const XLSX = await import('xlsx');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result;
+        const wb = XLSX.read(data, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+        if (json.length < 2) { setFormError('File must have at least a header row and one data row'); return; }
+
+        const headers = json[0].map((h: any) => String(h).toLowerCase().trim());
+        const nameIdx = headers.findIndex((h: string) => h.includes('name'));
+        const phoneIdx = headers.findIndex((h: string) => h.includes('contact') || h.includes('phone'));
+        const locationIdx = headers.findIndex((h: string) => h.includes('location'));
+        const birthdayIdx = headers.findIndex((h: string) => h.includes('birthday') || h.includes('birth') || h.includes('dob'));
+        const fellowshipIdx = headers.findIndex((h: string) => h.includes('fellowship'));
+        const designationIdx = headers.findIndex((h: string) => h.includes('designation') || h.includes('role'));
+
+        if (nameIdx === -1) {
+          setFormError('File must contain a NAME column');
+          return;
+        }
+
+        const imported: Omit<Member, 'id'>[] = [];
+        for (let i = 1; i < json.length; i++) {
+          const row = json[i];
+          if (!row?.length) continue;
+          const name = String(row[nameIdx] || '').trim();
+          if (!name) continue;
+
+          let birthday = '';
+          const bval = birthdayIdx !== -1 ? row[birthdayIdx] : undefined;
+          if (bval !== undefined && bval !== null && bval !== '') {
+            if (typeof bval === 'number') {
+              const d = new Date(new Date(1899, 11, 30).getTime() + bval * 86400000);
+              birthday = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            } else {
+              const s = String(bval).trim();
+              const m = s.match(/(\d{1,2})[-\/](\d{1,2})/);
+              if (m) birthday = `${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+              else birthday = s;
+            }
+          }
+
+          const designation = designationIdx !== -1 ? String(row[designationIdx] || 'Member').trim() : 'Member';
+
+          imported.push({
+            name,
+            phone: phoneIdx !== -1 ? String(row[phoneIdx] || '').trim() : '',
+            location: locationIdx !== -1 ? String(row[locationIdx] || '').trim() : '',
+            birthday,
+            fellowship: fellowshipIdx !== -1 ? String(row[fellowshipIdx] || '').trim() : '',
+            designation: DESIGNATIONS.includes(designation as any) ? designation as any : 'Member',
+          });
+        }
+
+        if (imported.length === 0) { setFormError('No valid entries found'); return; }
+        
+        setIsLoading(true);
+        fetch('/api/members/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ members: imported }),
+        })
+        .then(res => {
+          if (res.ok) {
+            setSuccessMsg(`Imported and saved ${imported.length} members to roster.`);
+            fetchMembers();
+            setTimeout(() => setSuccessMsg(null), 5000);
+          } else {
+            setFormError(`Failed to sync database.`);
+            setIsLoading(false);
+          }
+        })
+        .catch(() => {
+          setFormError(`Failed to sync database.`);
+          setIsLoading(false);
+        });
+      } catch {
+        setFormError('Error parsing Excel file.');
+        setIsLoading(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
     <div className="space-y-4">
       {/* Success banner */}
@@ -149,12 +240,18 @@ export default function MemberRoster() {
             <option value="all">All Fellowships</option>
             {fellowships.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
-          <button
-            onClick={openAdd}
-            className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition whitespace-nowrap"
-          >
-            + Add Member
-          </button>
+          <div className="flex gap-2">
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload-roster" />
+            <label htmlFor="excel-upload-roster" className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition cursor-pointer whitespace-nowrap flex items-center justify-center">
+              Import Database
+            </label>
+            <button
+              onClick={openAdd}
+              className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition whitespace-nowrap flex items-center justify-center"
+            >
+              + Add Member
+            </button>
+          </div>
         </div>
         <p className="text-xs text-gray-400 mt-2">
           Showing {filtered.length} of {members.length} members
