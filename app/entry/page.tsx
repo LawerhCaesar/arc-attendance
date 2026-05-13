@@ -49,6 +49,23 @@ const formatDate = (date: Date = new Date()): string => {
 
 const getTodayKey = () => `attendance-${new Date().toISOString().split('T')[0]}`;
 
+/**
+ * Returns the ISO date string (YYYY-MM-DD) of the most recent Sunday.
+ * If today IS a Sunday, returns today. Otherwise returns the previous Sunday.
+ * All dates are computed in local time.
+ */
+const getMostRecentSunday = (): string => {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0 = Sunday
+  const daysBack = dayOfWeek; // 0 if Sunday, 1 if Monday, …, 6 if Saturday
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - daysBack);
+  const year = sunday.getFullYear();
+  const month = String(sunday.getMonth() + 1).padStart(2, '0');
+  const day = String(sunday.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const designationColors: Record<string, string> = {
   'Fellowship Leader': 'bg-purple-100 text-purple-800',
   'Cell Leader': 'bg-blue-100 text-blue-800',
@@ -286,7 +303,7 @@ export default function EntryPage() {
           !markedPresentRef.current.has(e.id)
         );
         if (absentEntries.length > 0) {
-          const today = new Date().toISOString().split('T')[0];
+          const serviceDate = getMostRecentSunday();
           await Promise.allSettled(absentEntries.map(e =>
             fetch('/api/attendance', {
               method: 'POST',
@@ -295,7 +312,7 @@ export default function EntryPage() {
                 name: e.name, phone: e.phone, location: e.location,
                 birthday: e.birthday, fellowship: e.fellowship,
                 designation: e.designation, firstTimer: e.firstTimer,
-                attendanceDate: today, attendanceStatus: 'absent',
+                attendanceDate: serviceDate, attendanceStatus: 'absent',
               }),
             })
           ));
@@ -371,7 +388,7 @@ export default function EntryPage() {
     }
 
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const serviceDate = getMostRecentSunday();
       const responses = await Promise.all(marked.map(e =>
         fetch('/api/attendance', {
           method: 'POST',
@@ -380,7 +397,7 @@ export default function EntryPage() {
             name: e.name, phone: e.phone, location: e.location,
             birthday: e.birthday, fellowship: e.fellowship,
             designation: e.designation, firstTimer: e.firstTimer,
-            attendanceDate: today, attendanceStatus: 'present',
+            attendanceDate: serviceDate, attendanceStatus: 'present',
           }),
         })
       ));
@@ -524,7 +541,7 @@ export default function EntryPage() {
     }
 
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const serviceDate = getMostRecentSunday();
       const responses = await Promise.allSettled(
         toSubmit.map(cl =>
           fetch('/api/attendance', {
@@ -538,7 +555,7 @@ export default function EntryPage() {
               fellowship: cl.fellowship,
               designation: cl.designation,
               firstTimer: false,
-              attendanceDate: today,
+              attendanceDate: serviceDate,
               attendanceStatus: presentCLIds.has(cl.id) ? 'present' : 'absent',
             }),
           })
@@ -656,7 +673,15 @@ export default function EntryPage() {
               )}
 
               <div className="mb-4 pb-3 border-b border-gray-300">
-                <p className="text-lg font-semibold text-gray-700">{formatDate()}</p>
+                <p className="text-lg font-semibold text-gray-700">
+                  {(() => {
+                    const [y, m, d] = getMostRecentSunday().split('-').map(Number);
+                    return formatDate(new Date(y, m - 1, d));
+                  })()}
+                </p>
+                {new Date().getDay() !== 0 && (
+                  <p className="text-xs text-amber-600 mt-0.5">Recording for last Sunday (service date)</p>
+                )}
               </div>
 
               <div className="mb-4">
@@ -836,7 +861,15 @@ export default function EntryPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <h1 className="text-2xl font-bold text-gray-800">Cell Leader Check-In</h1>
-                    <p className="text-sm text-gray-500 mt-1">{formatDate()} — Tap a name to mark present</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {(() => {
+                        const [y, m, d] = getMostRecentSunday().split('-').map(Number);
+                        return formatDate(new Date(y, m - 1, d));
+                      })()} — Tap a name to mark present
+                    </p>
+                    {new Date().getDay() !== 0 && (
+                      <p className="text-xs text-amber-600">Recording for last Sunday (service date)</p>
+                    )}
                   </div>
                   <div className="flex gap-3 flex-wrap">
                     <button

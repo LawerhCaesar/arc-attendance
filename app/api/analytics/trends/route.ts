@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
 
     const data = await getAttendanceData();
 
-    // Group by date
+    // Group by service date (attendanceDate = the Sunday of service, not submission date)
     const attendanceByDate: Record<string, number> = {};
     data.forEach(record => {
-      const date = record.date;
+      const date = record.attendanceDate || record.date;
       attendanceByDate[date] = (attendanceByDate[date] || 0) + 1;
     });
 

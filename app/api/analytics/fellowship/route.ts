@@ -50,10 +50,12 @@ export async function GET() {
       f.designations[designation] = (f.designations[designation] || 0) + 1;
 
       if (record.phone?.trim()) f.uniquePhones.add(record.phone.trim().toLowerCase());
-      if (record.date) {
-        f.dates.add(record.date);
-        if (!f.recentDate || record.date > f.recentDate) {
-          f.recentDate = record.date;
+      // Use attendanceDate (the service Sunday) not date (submission timestamp)
+      const serviceDate = record.attendanceDate || record.date;
+      if (serviceDate) {
+        f.dates.add(serviceDate);
+        if (!f.recentDate || serviceDate > f.recentDate) {
+          f.recentDate = serviceDate;
         }
       }
     });
@@ -96,8 +98,10 @@ export async function GET() {
       clMap[key].total++;
       if (r.attendanceStatus === 'present') {
         clMap[key].present++;
-        if (!clMap[key].lastPresent || (r.date || '') > clMap[key].lastPresent) {
-          clMap[key].lastPresent = r.date || '';
+        // Use attendanceDate (service Sunday) not date (submission timestamp)
+        const serviceDate = r.attendanceDate || r.date || '';
+        if (!clMap[key].lastPresent || serviceDate > clMap[key].lastPresent) {
+          clMap[key].lastPresent = serviceDate;
         }
       }
     });

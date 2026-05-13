@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appendAttendance, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
 
+/**
+ * Snaps a YYYY-MM-DD date string to the most recent Sunday (local time).
+ * If the date is already a Sunday, returns it unchanged.
+ */
+function snapToSunday(isoDate: string): string {
+  // Parse as local date to avoid UTC offset shifting the day
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  const dayOfWeek = date.getDay(); // 0 = Sunday
+  date.setDate(date.getDate() - dayOfWeek);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -35,8 +51,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Ensure attendanceDate is always a Sunday
+    const rawDate = attendanceDate || new Date().toISOString().split('T')[0];
+    const serviceSunday = snapToSunday(rawDate);
+
     const record = {
-      date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0], // submission timestamp
       name: name.trim(),
       phone: (phone || '').trim(),
       location: (location || '').trim(),
@@ -44,7 +64,7 @@ export async function POST(request: NextRequest) {
       fellowship: (fellowship || '').trim(),
       firstTimer: firstTimer === true || firstTimer === 'true' || firstTimer === 'yes' ? 'Yes' : 'No',
       designation: designation || 'Member',
-      attendanceDate: attendanceDate || '',
+      attendanceDate: serviceSunday,
       attendanceStatus: attendanceStatus || '',
     };
 
