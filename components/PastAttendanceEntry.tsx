@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -197,6 +197,7 @@ export default function PastAttendanceEntry() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [markedPresent, setMarkedPresent] = useState<Set<string>>(new Set());
+  const [entryErrors, setEntryErrors] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetchMembers = async () => {
@@ -226,8 +227,35 @@ export default function PastAttendanceEntry() {
   };
 
   useEffect(() => {
+    const draftStr = typeof window !== 'undefined' ? sessionStorage.getItem('pastAttendanceDraft') : null;
+    if (draftStr) {
+      try {
+        const draft = JSON.parse(draftStr);
+        if (draft.entries && draft.entries.length > 0) {
+          setEntries(draft.entries);
+          if (draft.markedPresent) setMarkedPresent(new Set(draft.markedPresent));
+          if (draft.selectedDateIso) setSelectedDateIso(draft.selectedDateIso);
+          setIsLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to parse draft', e);
+      }
+    }
     fetchMembers();
   }, []);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const draft = {
+      entries,
+      markedPresent: Array.from(markedPresent),
+      selectedDateIso,
+    };
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pastAttendanceDraft', JSON.stringify(draft));
+    }
+  }, [entries, markedPresent, selectedDateIso, isLoading]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -236,12 +264,16 @@ export default function PastAttendanceEntry() {
     setSelectedDateIso(isoDate);
     setMarkedPresent(new Set());
     setMessage(null);
+    setEntryErrors({});
   };
 
   // ── Handlers ──
   const handleCellChange = (id: string, field: keyof AttendanceEntry, value: string | boolean) => {
     setEntries(entries.map(e => e.id === id ? { ...e, [field]: value } : e));
     setMessage(null);
+    if (entryErrors[id]) {
+      setEntryErrors(prev => { const next = {...prev}; delete next[id]; return next; });
+    }
   };
 
   const addRow = () => {
@@ -304,28 +336,54 @@ export default function PastAttendanceEntry() {
     }
 
     try {
-      const responses = await Promise.all(validEntries.map(e =>
-        fetch('/api/attendance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: e.name, phone: e.phone, location: e.location,
-            birthday: e.birthday, fellowship: e.fellowship,
-            designation: e.designation, firstTimer: e.firstTimer,
-            attendanceDate: selectedDateIso, 
-            attendanceStatus: markedPresent.has(e.id) ? 'present' : 'absent',
-          }),
-        })
-      ));
+      const results = await Promise.all(validEntries.map(async (e) => {
+        try {
+          const res = await fetch('/api/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: e.name, phone: e.phone, location: e.location,
+              birthday: e.birthday, fellowship: e.fellowship,
+              designation: e.designation, firstTimer: e.firstTimer,
+              attendanceDate: selectedDateIso, 
+              attendanceStatus: markedPresent.has(e.id) ? 'present' : 'absent',
+            }),
+          });
+          
+          let errorMsg = null;
+          if (!res.ok) {
+            try {
+               const data = await res.json();
+               errorMsg = data.error || `Server error ${res.status}`;
+            } catch {
+               errorMsg = `Server error ${res.status}`;
+            }
+          }
+          return { id: e.id, ok: res.ok, errorMsg };
+        } catch (err) {
+          return { id: e.id, ok: false, errorMsg: 'Network error' };
+        }
+      }));
 
-      const hasError = responses.some(r => !r.ok);
-      if (hasError) {
-        setMessage({ type: 'error', text: 'Some entries failed to submit. Please try again.' });
+      const newErrors: Record<string, string> = {};
+      results.forEach(r => {
+        if (!r.ok && r.errorMsg) {
+          newErrors[r.id] = r.errorMsg;
+        }
+      });
+
+      if (Object.keys(newErrors).length > 0) {
+        setEntryErrors(newErrors);
+        setMessage({ type: 'error', text: 'Some entries failed to submit. Please fix the highlighted rows below and try again.' });
       } else {
         const presentCount = validEntries.filter(e => markedPresent.has(e.id)).length;
         const absentCount = validEntries.length - presentCount;
         setMessage({ type: 'success', text: `Submitted successfully for ${selectedDateIso}: ${presentCount} present, ${absentCount} absent.` });
         setMarkedPresent(new Set());
+        setEntryErrors({});
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pastAttendanceDraft');
+        }
       }
     } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
@@ -536,70 +594,81 @@ export default function PastAttendanceEntry() {
               .map(entry => {
                 const isEditing = editingId === entry.id;
                 const isPresent = markedPresent.has(entry.id);
+                const hasError = !!entryErrors[entry.id];
+                const rowClass = hasError ? 'bg-red-50 hover:bg-red-100' : (isPresent ? 'bg-green-50' : '');
                 const inputCls = (editing: boolean) =>
                   `w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!editing ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`;
 
                 return (
-                  <tr key={entry.id} className={`hover:bg-gray-50 ${isPresent ? 'bg-green-50' : ''}`}>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      <input type="text" value={entry.name} onChange={e => handleCellChange(entry.id, 'name', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Full name" />
-                    </td>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      <input type="tel" value={entry.phone} onChange={e => handleCellChange(entry.id, 'phone', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Phone number" />
-                    </td>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      <FancyBirthdayPicker value={entry.birthday} onChange={(val: string) => handleCellChange(entry.id, 'birthday', val)} disabled={!isEditing} />
-                    </td>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
-                    </td>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      <input type="text" value={entry.fellowship} onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Fellowship" />
-                    </td>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      {isEditing ? (
-                        <select
-                          value={entry.designation}
-                          onChange={e => handleCellChange(entry.id, 'designation', e.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                        >
-                          {DESIGNATIONS.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                      ) : (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${designationColors[entry.designation] || designationColors['Member']}`}>
-                          {entry.designation || 'Member'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 border-r border-gray-300">
-                      <div className="flex items-center justify-center">
-                        <input type="checkbox" checked={entry.firstTimer} onChange={e => handleCellChange(entry.id, 'firstTimer', e.target.checked)} disabled={!isEditing} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed" />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
+                  <React.Fragment key={entry.id}>
+                    <tr className={`hover:bg-gray-50 ${rowClass}`}>
+                      <td className="px-3 py-2 border-r border-gray-300">
+                        <input type="text" value={entry.name} onChange={e => handleCellChange(entry.id, 'name', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Full name" />
+                      </td>
+                      <td className="px-3 py-2 border-r border-gray-300">
+                        <input type="tel" value={entry.phone} onChange={e => handleCellChange(entry.id, 'phone', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Phone number" />
+                      </td>
+                      <td className="px-3 py-2 border-r border-gray-300">
+                        <FancyBirthdayPicker value={entry.birthday} onChange={(val: string) => handleCellChange(entry.id, 'birthday', val)} disabled={!isEditing} />
+                      </td>
+                      <td className="px-3 py-2 border-r border-gray-300">
+                        <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
+                      </td>
+                      <td className="px-3 py-2 border-r border-gray-300">
+                        <input type="text" value={entry.fellowship} onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Fellowship" />
+                      </td>
+                      <td className="px-3 py-2 border-r border-gray-300">
                         {isEditing ? (
-                          <>
-                            <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition">Save</button>
-                            <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition">Cancel</button>
-                          </>
+                          <select
+                            value={entry.designation}
+                            onChange={e => handleCellChange(entry.id, 'designation', e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                          >
+                            {DESIGNATIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
                         ) : (
-                          <>
-                            <button onClick={() => setEditingId(entry.id)} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition whitespace-nowrap min-w-[45px]">Edit</button>
-                            <button
-                              onClick={() => handleMarkPresent(entry.id)}
-                              className={`px-3 py-1 text-xs rounded transition whitespace-nowrap min-w-[80px] ${isPresent ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                            >
-                              {isPresent ? '✓ Present' : 'Mark Present'}
-                            </button>
-                          </>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${designationColors[entry.designation] || designationColors['Member']}`}>
+                            {entry.designation || 'Member'}
+                          </span>
                         )}
-                        {entries.length > 1 && !isEditing && (
-                          <button onClick={() => removeRow(entry.id)} className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition">✕</button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-3 py-2 border-r border-gray-300">
+                        <div className="flex items-center justify-center">
+                          <input type="checkbox" checked={entry.firstTimer} onChange={e => handleCellChange(entry.id, 'firstTimer', e.target.checked)} disabled={!isEditing} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed" />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          {isEditing ? (
+                            <>
+                              <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition">Save</button>
+                              <button onClick={() => setEditingId(null)} className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition">Cancel</button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => setEditingId(entry.id)} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition whitespace-nowrap min-w-[45px]">Edit</button>
+                              <button
+                                onClick={() => handleMarkPresent(entry.id)}
+                                className={`px-3 py-1 text-xs rounded transition whitespace-nowrap min-w-[80px] ${isPresent ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                              >
+                                {isPresent ? '✓ Present' : 'Mark Present'}
+                              </button>
+                            </>
+                          )}
+                          {entries.length > 1 && !isEditing && (
+                            <button onClick={() => removeRow(entry.id)} className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition">✕</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {hasError && (
+                      <tr className="bg-red-50">
+                        <td colSpan={8} className="px-3 py-1 text-red-600 text-xs font-semibold border-b border-red-200">
+                          ⚠️ Error: {entryErrors[entry.id]}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
           </tbody>
