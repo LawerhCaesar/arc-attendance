@@ -53,10 +53,10 @@ const designationColors: Record<string, string> = {
 const getTargetSundays = () => {
   const sundays = [];
   const currentYear = new Date().getFullYear();
-  // Start from April 12th
-  const date = new Date(currentYear, 3, 12); // Month is 0-indexed, so 3 is April
+  // Start from January 1st
+  const date = new Date(currentYear, 0, 1); 
   
-  // Advance to the first Sunday if April 12th is not a Sunday
+  // Advance to the first Sunday of the year
   while (date.getDay() !== 0) {
     date.setDate(date.getDate() + 1);
   }
