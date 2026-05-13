@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -471,7 +472,7 @@ export default function PastAttendanceEntry() {
             phone: phoneIdx !== -1 ? String(row[phoneIdx] || '').trim() : '',
             location: String(row[locationIdx] || '').trim(),
             birthday,
-            fellowship: String(row[fellowshipIdx] || '').trim(),
+            fellowship: matchFellowship(String(row[fellowshipIdx] || '').trim()),
             designation: DESIGNATIONS.includes(designation as any) ? designation : 'Member',
             firstTimer: firstTimerIdx !== -1
               ? ['yes', 'true', '1', 'y'].includes(String(row[firstTimerIdx] || '').toLowerCase().trim())
@@ -637,7 +638,20 @@ export default function PastAttendanceEntry() {
                         <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
                       </td>
                       <td className="px-3 py-2 border-r border-gray-300">
-                        <input type="text" value={entry.fellowship} onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Fellowship" />
+                        {isEditing ? (
+                          <select
+                            value={entry.fellowship}
+                            onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                          >
+                            <option value="Unassigned">Unassigned</option>
+                            {FELLOWSHIPS.map(f => <option key={f} value={f}>{f}</option>)}
+                          </select>
+                        ) : (
+                          <span className="px-2 py-0.5 text-xs text-gray-700 bg-blue-50 rounded-md whitespace-nowrap">
+                            {entry.fellowship || 'Unassigned'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 border-r border-gray-300">
                         {isEditing ? (

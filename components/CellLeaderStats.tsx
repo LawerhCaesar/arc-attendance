@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { FELLOWSHIPS } from '@/lib/fellowships';
 
 interface CellLeaderStat {
   name: string;
@@ -37,7 +38,7 @@ export default function CellLeaderStats() {
       .catch(() => setIsLoading(false));
   }, []);
 
-  const fellowships = Array.from(new Set(leaders.map(l => l.fellowship))).sort();
+  const fellowships = [...FELLOWSHIPS, 'Unassigned'].sort();
 
   const filtered = leaders
     .filter(l => {

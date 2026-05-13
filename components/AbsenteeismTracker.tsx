@@ -88,6 +88,7 @@ export default function AbsenteeismTracker() {
   const trackerData = useMemo(() => {
     const data: TrackerRow[] = [];
     const todayStr = new Date().toISOString().split('T')[0];
+    const referenceDateStr = serviceDates.length > 0 ? serviceDates[serviceDates.length - 1] : todayStr;
 
     members.forEach(member => {
       // Find all records for this member
@@ -128,10 +129,10 @@ export default function AbsenteeismTracker() {
         }
       });
 
-      const daysSinceLastAttended = lastAttended ? getDaysDiff(lastAttended, todayStr) : null;
+      const daysSinceLastAttended = lastAttended ? getDaysDiff(lastAttended, referenceDateStr) : null;
       
       // If never attended, the diff is since the first recorded service
-      const noAttendDiff = serviceDates.length > 0 ? getDaysDiff(serviceDates[0], todayStr) : null;
+      const noAttendDiff = serviceDates.length > 0 ? getDaysDiff(serviceDates[0], referenceDateStr) : null;
       const actualDiff = daysSinceLastAttended ?? noAttendDiff;
 
       const needsFlag = actualDiff !== null && actualDiff > 30;

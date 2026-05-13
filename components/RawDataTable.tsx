@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { FELLOWSHIPS } from '@/lib/fellowships';
 
 interface AttendanceRow {
   id: string;
@@ -55,7 +56,7 @@ export default function RawDataTable() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const fellowships = Array.from(new Set(data.map(r => r.fellowship).filter(Boolean))).sort();
+  const fellowships = [...FELLOWSHIPS, 'Unassigned'].sort();
 
   const filtered = data.filter(row => {
     const q = search.toLowerCase().trim();
@@ -116,6 +117,30 @@ export default function RawDataTable() {
     setTimeout(() => setCleanMessage(null), 8000);
   };
 
+  const handleCleanFellowships = async () => {
+    if (!confirm('Are you sure you want to scan and standardize all fellowship names in the database?')) return;
+    
+    setIsCleaning(true);
+    setCleanMessage(null);
+    try {
+      const res = await fetch('/api/admin/clean-fellowships', { method: 'POST' });
+      const responseData = await res.json();
+      if (res.ok) {
+        setCleanMessage({ 
+          text: `Clean up successful. Updated ${responseData.stats.updatedAttendanceCount} attendance records and ${responseData.stats.updatedMembersCount} member records.`, 
+          type: 'success' 
+        });
+        fetchData(); // reload the data
+      } else {
+        setCleanMessage({ text: responseData.error || 'Failed to clean database.', type: 'error' });
+      }
+    } catch {
+      setCleanMessage({ text: 'Network error occurred.', type: 'error' });
+    }
+    setIsCleaning(false);
+    setTimeout(() => setCleanMessage(null), 8000);
+  };
+
   return (
     <div className="space-y-4">
       {/* Filters */}
@@ -140,6 +165,13 @@ export default function RawDataTable() {
             className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition whitespace-nowrap disabled:opacity-50"
           >
             {isCleaning ? 'Cleaning...' : 'Remove DB Duplicates'}
+          </button>
+          <button
+            onClick={handleCleanFellowships}
+            disabled={isCleaning}
+            className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition whitespace-nowrap disabled:opacity-50"
+          >
+            {isCleaning ? 'Cleaning...' : 'Fix Fellowship Names'}
           </button>
         </div>
         

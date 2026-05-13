@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 
 interface SummaryData {
-  totalAttendance: number;
-  uniqueVisitors: number;
-  repeatVisitors: number;
+  highestAttendance: number;
+  firstTimersCount: number;
   totalServices: number;
   latestDate: string;
   latestAttendance: number;
@@ -47,7 +46,7 @@ export default function DashboardStats() {
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {Array.from({ length: 7 }).map((_, i) => (
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 animate-pulse">
             <div className="h-3 bg-gray-200 rounded w-24 mb-3" />
             <div className="h-8 bg-gray-200 rounded w-16" />
@@ -62,9 +61,8 @@ export default function DashboardStats() {
   }
 
   const stats = [
-    { label: 'Total Attendance', value: data.totalAttendance.toLocaleString(), icon: '📈' },
-    { label: 'Unique Visitors', value: data.uniqueVisitors.toLocaleString(), icon: '👤' },
-    { label: 'Repeat Visitors', value: data.repeatVisitors.toLocaleString(), icon: '🔄' },
+    { label: 'Highest Sunday Attendance', value: data.highestAttendance.toLocaleString(), icon: '📈' },
+    { label: 'First Timers Till Date', value: data.firstTimersCount.toLocaleString(), icon: '👤' },
     { label: 'Total Services', value: data.totalServices.toLocaleString(), icon: '⛪' },
     { label: 'Latest Service', value: data.latestAttendance.toLocaleString(), icon: '📅', subtitle: data.latestDate ? new Date(data.latestDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '' },
     { label: 'Avg per Service', value: data.averageAttendance.toLocaleString(), icon: '📊' },
@@ -72,7 +70,7 @@ export default function DashboardStats() {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-8">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
       {stats.map((stat, i) => {
         const colors = statColorMap[i % statColorMap.length];
         return (

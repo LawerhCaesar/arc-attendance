@@ -10,18 +10,18 @@ import CellLeaderStats from '@/components/CellLeaderStats';
 import MemberRoster from '@/components/MemberRoster';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
-import RepeatVisitorsTable from '@/components/RepeatVisitorsTable';
+import FirstTimersAnalysis from '@/components/FirstTimersAnalysis';
 import PastAttendanceEntry from '@/components/PastAttendanceEntry';
 import AbsenteeismTracker from '@/components/AbsenteeismTracker';
 
-type AdminTab = 'overview' | 'past-entry' | 'absenteeism' | 'demographics' | 'visitors' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
+type AdminTab = 'overview' | 'past-entry' | 'absenteeism' | 'demographics' | 'first-timers' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',      label: 'Overview',        icon: '📊' },
   { id: 'past-entry',    label: 'Past Entry',      icon: '📅' },
   { id: 'absenteeism',   label: 'Absenteeism',     icon: '🚨' },
   { id: 'demographics',  label: 'Demographics',    icon: '🎂' },
-  { id: 'visitors',      label: 'Visitor Analysis',icon: '🔄' },
+  { id: 'first-timers',  label: 'First Timers',    icon: '🆕' },
   { id: 'fellowship',    label: 'By Fellowship',   icon: '🏛️' },
   { id: 'cell-leaders',  label: 'Cell Leaders',    icon: '👥' },
   { id: 'members',       label: 'Member Roster',   icon: '📋' },
@@ -150,13 +150,13 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'visitors' && (
+        {activeTab === 'first-timers' && (
           <div>
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Repeat Visitor Analysis</h2>
-              <p className="text-gray-500 text-sm mt-1">Track returning visitors and their attendance frequency</p>
+              <h2 className="text-2xl font-bold text-gray-900">First Timer Analysis</h2>
+              <p className="text-gray-500 text-sm mt-1">Track first-time visitors and their attendance history</p>
             </div>
-            <RepeatVisitorsTable />
+            <FirstTimersAnalysis />
           </div>
         )}
 

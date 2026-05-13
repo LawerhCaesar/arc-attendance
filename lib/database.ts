@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { matchFellowship } from './fellowships';
 
 export interface AttendanceRecord {
   id?: string;
@@ -45,6 +46,7 @@ const MEMBERS_TABLE = 'members';
 export async function appendAttendance(record: AttendanceRecord): Promise<void> {
   const attendanceRecord = {
     ...record,
+    fellowship: matchFellowship(record.fellowship),
     designation: record.designation || 'Member',
     createdAt: new Date().toISOString(),
   };
@@ -166,13 +168,17 @@ export async function getMembers(
   return data || [];
 }
 
-/** Create a new member */
 export async function createMember(
   member: Omit<Member, 'id' | 'created_at' | 'updated_at'>
 ): Promise<Member> {
+  const payload = { ...member, is_active: true };
+  if (payload.fellowship !== undefined) {
+    payload.fellowship = matchFellowship(payload.fellowship);
+  }
+
   const { data, error } = await supabase
     .from(MEMBERS_TABLE)
-    .insert([{ ...member, is_active: true }])
+    .insert([payload])
     .select()
     .single();
 
@@ -193,7 +199,7 @@ export async function syncMemberFromAttendance(record: AttendanceRecord): Promis
     .ilike('name', record.name);
 
   if (record.fellowship) {
-    query = query.eq('fellowship', record.fellowship);
+    query = query.eq('fellowship', matchFellowship(record.fellowship));
   }
 
   const { data: existing } = await query.maybeSingle();
@@ -202,7 +208,7 @@ export async function syncMemberFromAttendance(record: AttendanceRecord): Promis
     await createMember({
       name: record.name,
       phone: record.phone || '',
-      fellowship: record.fellowship,
+      fellowship: matchFellowship(record.fellowship),
       designation: record.designation || 'Member',
       birthday: record.birthday || '',
       location: record.location || '',
@@ -223,14 +229,18 @@ export async function syncMemberFromAttendance(record: AttendanceRecord): Promis
   }
 }
 
-/** Update an existing member */
 export async function updateMember(
   id: string,
   member: Partial<Omit<Member, 'id' | 'created_at' | 'updated_at'>>
 ): Promise<Member> {
+  const payload = { ...member, updated_at: new Date().toISOString() };
+  if (payload.fellowship !== undefined) {
+    payload.fellowship = matchFellowship(payload.fellowship);
+  }
+
   const { data, error } = await supabase
     .from(MEMBERS_TABLE)
-    .update({ ...member, updated_at: new Date().toISOString() })
+    .update(payload)
     .eq('id', id)
     .select()
     .single();

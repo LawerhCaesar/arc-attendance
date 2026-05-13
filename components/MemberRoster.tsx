@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 
 interface Member {
   id: string;
@@ -51,7 +52,7 @@ export default function MemberRoster() {
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
 
-  const fellowships = Array.from(new Set(members.map(m => m.fellowship).filter(Boolean))).sort();
+  const fellowships = [...FELLOWSHIPS, 'Unassigned'].sort();
 
   const filtered = members.filter(m => {
     const matchFellowship = fellowshipFilter === 'all' || m.fellowship === fellowshipFilter;
@@ -171,7 +172,7 @@ export default function MemberRoster() {
             phone: phoneIdx !== -1 ? String(row[phoneIdx] || '').trim() : '',
             location: locationIdx !== -1 ? String(row[locationIdx] || '').trim() : '',
             birthday,
-            fellowship: fellowshipIdx !== -1 ? String(row[fellowshipIdx] || '').trim() : '',
+            fellowship: matchFellowship(fellowshipIdx !== -1 ? String(row[fellowshipIdx] || '').trim() : ''),
             designation: DESIGNATIONS.includes(designation as any) ? designation as any : 'Member',
           });
         }
@@ -289,6 +290,18 @@ export default function MemberRoster() {
                   />
                 </div>
               ))}
+              <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Fellowship *</label>
+                  <select
+                    value={form.fellowship}
+                    onChange={e => setForm({ ...form, fellowship: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="" disabled>Select a fellowship</option>
+                    <option value="Unassigned">Unassigned</option>
+                    {FELLOWSHIPS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Designation *</label>
                 <select
