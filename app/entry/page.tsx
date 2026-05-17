@@ -221,6 +221,7 @@ export default function EntryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isLoadingRoster, setIsLoadingRoster] = useState(false);
 
   // ── Last Sunday Edit State ──
   const [lastSundayRecords, setLastSundayRecords] = useState<LastSundayRecord[]>([]);
@@ -250,17 +251,21 @@ export default function EntryPage() {
   useEffect(() => { markedPresentRef.current = markedPresent; }, [markedPresent]);
 
   // ── Persistence ──
-  const loadPersistedData = () => {
+  const loadPersistedData = (): boolean => {
     try {
       const stored = localStorage.getItem(getTodayKey());
       if (stored) {
         const data = JSON.parse(stored);
         if (data.date === new Date().toISOString().split('T')[0]) {
-          if (data.entries?.length > 0) setEntries(data.entries);
-          if (data.markedPresent) setMarkedPresent(new Set(data.markedPresent));
+          if (data.entries?.length > 0) {
+            setEntries(data.entries);
+            if (data.markedPresent) setMarkedPresent(new Set(data.markedPresent));
+            return true;
+          }
         }
       }
     } catch {}
+    return false;
   };
 
   const savePersistedData = (e: AttendanceEntry[], m: Set<string>) => {
@@ -301,6 +306,36 @@ export default function EntryPage() {
       const res = await fetch(`/api/attendance/by-date?date=${getMostRecentSunday()}`);
       if (res.ok) setLastSundayRecords(await res.json());
     } catch {} finally { setIsLoadingLastSunday(false); }
+  };
+
+  // ── Preload Member Roster ──
+  const fetchMembersForRoster = async () => {
+    setIsLoadingRoster(true);
+    try {
+      const res = await fetch('/api/members');
+      if (res.ok) {
+        const data = await res.json();
+        const mapped: AttendanceEntry[] = data.map((m: any) => ({
+          id: m.id || `${Date.now()}-${Math.random()}`,
+          name: m.name || '',
+          phone: m.phone || '',
+          location: m.location || '',
+          birthday: m.birthday || '',
+          fellowship: m.fellowship || '',
+          designation: m.designation || 'Member',
+          firstTimer: false,
+        }));
+        if (mapped.length > 0) {
+          setEntries(mapped);
+          setMarkedPresent(new Set());
+          setMessage({ type: 'success', text: `Loaded ${mapped.length} members from roster. Tap “Mark Present” for those who attended.` });
+        }
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to load member roster.' });
+    } finally {
+      setIsLoadingRoster(false);
+    }
   };
 
   // ── Fetch Cell Leaders ──
@@ -361,9 +396,14 @@ export default function EntryPage() {
 
   useEffect(() => {
     clearOldData();
-    loadPersistedData();
+    const hadSession = loadPersistedData();
     fetchSubmittedEntries();
-    if (new Date().getDay() !== 0) fetchLastSundayRecords();
+    if (new Date().getDay() !== 0) {
+      fetchLastSundayRecords();
+    } else if (!hadSession) {
+      // Sunday with no saved session → preload full roster
+      fetchMembersForRoster();
+    }
     setIsInitialLoad(false);
   }, []);
 
@@ -733,11 +773,18 @@ export default function EntryPage() {
                     </div>
                   </div>
                 </div>
-                <div className="space-x-2 flex items-center">
+                <div className="space-x-2 flex items-center flex-wrap gap-y-2">
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload" />
                   <label htmlFor="excel-upload" className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition cursor-pointer text-sm">
                     Import Excel
                   </label>
+                  <button
+                    onClick={fetchMembersForRoster}
+                    disabled={isLoadingRoster}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                  >
+                    {isLoadingRoster ? 'Loading…' : '👥 Load Roster'}
+                  </button>
                   <button onClick={addRow} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
                     Add Row
                   </button>
