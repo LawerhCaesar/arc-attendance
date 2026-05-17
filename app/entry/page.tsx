@@ -16,6 +16,19 @@ interface AttendanceEntry {
   firstTimer: boolean;
 }
 
+interface LastSundayRecord {
+  id: string;
+  name: string;
+  phone: string;
+  location: string;
+  birthday: string;
+  fellowship: string;
+  designation: string;
+  firstTimer: boolean;
+  attendanceDate: string;
+  attendanceStatus: string;
+}
+
 interface RosterMember {
   id: string;
   name: string;
@@ -209,6 +222,15 @@ export default function EntryPage() {
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
+  // ── Last Sunday Edit State ──
+  const [lastSundayRecords, setLastSundayRecords] = useState<LastSundayRecord[]>([]);
+  const [isLoadingLastSunday, setIsLoadingLastSunday] = useState(false);
+  const [lastSundayEditingId, setLastSundayEditingId] = useState<string | null>(null);
+  const [lastSundayEdits, setLastSundayEdits] = useState<Record<string, Partial<LastSundayRecord>>>({});
+  const [lastSundayMessage, setLastSundayMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isSavingLastSunday, setIsSavingLastSunday] = useState(false);
+  const [lastSundaySearch, setLastSundaySearch] = useState('');
+
   // ── Cell Leader State ──
   const [cellLeaders, setCellLeaders] = useState<RosterMember[]>([]);
   const [presentCLIds, setPresentCLIds] = useState<Set<string>>(new Set());
@@ -272,6 +294,15 @@ export default function EntryPage() {
 
   useEffect(() => { fetchSubmittedEntriesRef.current = fetchSubmittedEntries; }, []);
 
+  // ── Fetch Last Sunday Records (weekdays only) ──
+  const fetchLastSundayRecords = async () => {
+    setIsLoadingLastSunday(true);
+    try {
+      const res = await fetch(`/api/attendance/by-date?date=${getMostRecentSunday()}`);
+      if (res.ok) setLastSundayRecords(await res.json());
+    } catch {} finally { setIsLoadingLastSunday(false); }
+  };
+
   // ── Fetch Cell Leaders ──
   const fetchCellLeaders = async () => {
     setIsLoadingCL(true);
@@ -332,6 +363,7 @@ export default function EntryPage() {
     clearOldData();
     loadPersistedData();
     fetchSubmittedEntries();
+    if (new Date().getDay() !== 0) fetchLastSundayRecords();
     setIsInitialLoad(false);
   }, []);
 
@@ -581,6 +613,59 @@ export default function EntryPage() {
     } finally {
       setIsSubmittingCL(false);
     }
+  };
+
+  // ── Last Sunday Handlers ──
+  const handleLastSundayFieldChange = (id: string, field: keyof LastSundayRecord, value: string | boolean) => {
+    setLastSundayEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+  };
+
+  const handleLastSundaySave = async (record: LastSundayRecord) => {
+    setIsSavingLastSunday(true);
+    setLastSundayMessage(null);
+    const merged = { ...record, ...(lastSundayEdits[record.id] || {}) };
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: merged.name, phone: merged.phone, location: merged.location,
+          birthday: merged.birthday, fellowship: merged.fellowship,
+          designation: merged.designation, firstTimer: merged.firstTimer,
+          attendanceDate: merged.attendanceDate, attendanceStatus: merged.attendanceStatus,
+        }),
+      });
+      if (res.ok) {
+        setLastSundayRecords(prev => prev.map(r => r.id === record.id ? { ...r, ...(lastSundayEdits[record.id] || {}) } : r));
+        setLastSundayEdits(prev => { const n = { ...prev }; delete n[record.id]; return n; });
+        setLastSundayEditingId(null);
+        setLastSundayMessage({ type: 'success', text: `Updated ${merged.name} successfully.` });
+      } else {
+        setLastSundayMessage({ type: 'error', text: 'Failed to save changes.' });
+      }
+    } catch { setLastSundayMessage({ type: 'error', text: 'Network error. Please try again.' }); }
+    finally { setIsSavingLastSunday(false); }
+  };
+
+  const toggleLastSundayStatus = async (record: LastSundayRecord) => {
+    const newStatus = record.attendanceStatus === 'present' ? 'absent' : 'present';
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: record.name, phone: record.phone, location: record.location,
+          birthday: record.birthday, fellowship: record.fellowship,
+          designation: record.designation, firstTimer: record.firstTimer,
+          attendanceDate: record.attendanceDate, attendanceStatus: newStatus,
+        }),
+      });
+      if (res.ok) {
+        setLastSundayRecords(prev => prev.map(r => r.id === record.id ? { ...r, attendanceStatus: newStatus } : r));
+      } else {
+        setLastSundayMessage({ type: 'error', text: 'Failed to toggle status.' });
+      }
+    } catch { setLastSundayMessage({ type: 'error', text: 'Network error.' }); }
   };
 
   // ── Derived ──
@@ -850,7 +935,132 @@ export default function EntryPage() {
                   </div>
                 </div>
               )}
+
+              {/* ── Last Sunday's Records (weekdays only) ──────────────────── */}
+              {new Date().getDay() !== 0 && (
+                <div className="mt-8">
+                  <div className="flex justify-between items-center mb-3">
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-800">Last Sunday's Records</h2>
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        {(() => {
+                          const [y, m, d] = getMostRecentSunday().split('-').map(Number);
+                          return formatDate(new Date(y, m - 1, d));
+                        })()} — edit or correct submitted entries
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => { fetchLastSundayRecords(); setLastSundayMessage(null); }}
+                      className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition text-sm"
+                    >↺ Reload</button>
+                  </div>
+
+                  {lastSundayMessage && (
+                    <div className={`mb-3 p-3 rounded text-sm ${lastSundayMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                      {lastSundayMessage.text}
+                    </div>
+                  )}
+
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      value={lastSundaySearch}
+                      onChange={e => setLastSundaySearch(e.target.value)}
+                      placeholder="Search last Sunday's records…"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+
+                  {isLoadingLastSunday ? (
+                    <div className="flex justify-center py-8">
+                      <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : lastSundayRecords.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-4 text-center">No records found for last Sunday.</p>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              {['NAME', 'CONTACT', 'DATE OF BIRTH', 'LOCATION', 'FELLOWSHIP', 'DESIGNATION', 'STATUS', 'ACTIONS'].map(h => (
+                                <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-900 uppercase tracking-wider border-r border-gray-200 last:border-r-0">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {lastSundayRecords
+                              .filter(r => {
+                                if (!lastSundaySearch.trim()) return true;
+                                const q = lastSundaySearch.toLowerCase();
+                                return r.name.toLowerCase().includes(q) || r.fellowship.toLowerCase().includes(q) || r.phone.toLowerCase().includes(q);
+                              })
+                              .map(record => {
+                                const isEditing = lastSundayEditingId === record.id;
+                                const edits = lastSundayEdits[record.id] || {};
+                                const merged = { ...record, ...edits };
+                                const isPresent = merged.attendanceStatus === 'present';
+                                const inputCls = (editing: boolean) =>
+                                  `w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!editing ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`;
+                                return (
+                                  <tr key={record.id} className={`hover:bg-gray-50 ${isPresent ? 'bg-green-50' : 'bg-red-50/30'}`}>
+                                    <td className="px-3 py-2 border-r border-gray-200 min-w-[130px]">
+                                      <input type="text" value={merged.name} onChange={e => handleLastSundayFieldChange(record.id, 'name', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} />
+                                    </td>
+                                    <td className="px-3 py-2 border-r border-gray-200 min-w-[110px]">
+                                      <input type="tel" value={merged.phone} onChange={e => handleLastSundayFieldChange(record.id, 'phone', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Phone" />
+                                    </td>
+                                    <td className="px-3 py-2 border-r border-gray-200 min-w-[90px]">
+                                      <input type="text" value={merged.birthday} onChange={e => handleLastSundayFieldChange(record.id, 'birthday', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="DD-MM" />
+                                    </td>
+                                    <td className="px-3 py-2 border-r border-gray-200 min-w-[110px]">
+                                      <input type="text" value={merged.location} onChange={e => handleLastSundayFieldChange(record.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
+                                    </td>
+                                    <td className="px-3 py-2 border-r border-gray-200 min-w-[110px]">
+                                      <input type="text" value={merged.fellowship} onChange={e => handleLastSundayFieldChange(record.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Fellowship" />
+                                    </td>
+                                    <td className="px-3 py-2 border-r border-gray-200 min-w-[130px]">
+                                      {isEditing ? (
+                                        <select value={merged.designation} onChange={e => handleLastSundayFieldChange(record.id, 'designation', e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 bg-white">
+                                          {DESIGNATIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                                        </select>
+                                      ) : (
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${designationColors[merged.designation] || designationColors['Member']}`}>{merged.designation}</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 border-r border-gray-200">
+                                      <button
+                                        onClick={() => toggleLastSundayStatus(record)}
+                                        className={`px-3 py-1 text-xs rounded-full font-semibold transition whitespace-nowrap ${isPresent ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                      >
+                                        {isPresent ? '✓ Present' : '✗ Absent'}
+                                      </button>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-1">
+                                        {isEditing ? (
+                                          <>
+                                            <button onClick={() => handleLastSundaySave(record)} disabled={isSavingLastSunday} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50">Save</button>
+                                            <button onClick={() => { setLastSundayEditingId(null); setLastSundayEdits(prev => { const n = { ...prev }; delete n[record.id]; return n; }); }} className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 transition">Cancel</button>
+                                          </>
+                                        ) : (
+                                          <button onClick={() => setLastSundayEditingId(record.id)} className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition">Edit</button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">{lastSundayRecords.length} record(s) for last Sunday</p>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
+
           )}
 
           {/* ── TAB 2: Cell Leader Check-In ──────────────────────────────────── */}
