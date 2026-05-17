@@ -876,7 +876,7 @@ export default function EntryPage() {
               </div>
 
               {/* Submitted Entries */}
-              {submittedEntries.length > 0 && (
+              {new Date().getDay() !== 0 && submittedEntries.length > 0 && (
                 <div className="mt-8">
                   <h2 className="text-xl font-bold mb-4 text-gray-800">Submitted Entries</h2>
                   <div className="mb-4">
