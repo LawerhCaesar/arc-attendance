@@ -596,7 +596,7 @@ export default function PastAttendanceEntry() {
           <thead className="bg-gray-50">
             <tr>
               {['NAME', 'CONTACT', 'DATE OF BIRTH', 'LOCATION', 'FELLOWSHIP', 'DESIGNATION', 'FIRST TIME?', 'ACTIONS'].map(h => (
-                <th key={h} className="px-3 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider border-r border-gray-300 last:border-r-0">
+                <th key={h} className={`px-3 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider border-r border-gray-300 last:border-r-0 ${h === 'NAME' ? 'min-w-[200px] sm:min-w-[250px]' : ''}`}>
                   {h}
                 </th>
               ))}
