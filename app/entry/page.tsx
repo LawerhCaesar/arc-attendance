@@ -400,8 +400,8 @@ export default function EntryPage() {
     fetchSubmittedEntries();
     if (new Date().getDay() !== 0) {
       fetchLastSundayRecords();
-    } else if (!hadSession) {
-      // Sunday with no saved session → preload full roster
+    }
+    if (!hadSession) {
       fetchMembersForRoster();
     }
     setIsInitialLoad(false);
