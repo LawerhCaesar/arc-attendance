@@ -1,6 +1,6 @@
 export const FELLOWSHIPS = [
   'All Grace',
-  'Exousia',
+  'Parakletos',
   'Special Dunamis',
   'Katalambano',
   'Pleroma',
