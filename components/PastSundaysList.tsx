@@ -157,7 +157,7 @@ export default function PastSundaysList() {
             <select
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="block w-full rounded-lg border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm bg-gray-50 border shadow-sm min-w-[250px]"
+              className="block w-full rounded-lg border-gray-300 py-2 pl-3 pr-10 text-base text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm bg-gray-50 border shadow-sm min-w-[250px]"
             >
               {sundays.map(date => {
                 const iso = formatDateIso(date);
@@ -180,7 +180,7 @@ export default function PastSundaysList() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search by name, phone, fellowship, or location…"
-              className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button
               onClick={handleExport}
@@ -201,7 +201,7 @@ export default function PastSundaysList() {
             <select
               value={fellowshipFilter}
               onChange={e => setFellowshipFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Fellowships</option>
               {fellowships.map(f => <option key={f} value={f}>{f}</option>)}
@@ -209,14 +209,14 @@ export default function PastSundaysList() {
             <select
               value={designationFilter}
               onChange={e => setDesignationFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {DESIGNATIONS.map(d => <option key={d} value={d === 'All' ? 'all' : d}>{d}</option>)}
             </select>
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Statuses</option>
               <option value="present">Present</option>
