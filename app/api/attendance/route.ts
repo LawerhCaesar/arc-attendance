@@ -90,6 +90,7 @@ export async function GET() {
 
     const entries = data.map((record, index) => ({
       id: `record-${index}-${record.date}`,
+      date: record.date,
       name: record.name,
       phone: record.phone,
       location: record.location,

@@ -14,6 +14,9 @@ interface AttendanceEntry {
   fellowship: string;
   designation: string;
   firstTimer: boolean;
+  date?: string;
+  attendanceStatus?: string;
+  attendanceDate?: string;
 }
 
 interface LastSundayRecord {
@@ -722,6 +725,11 @@ export default function EntryPage() {
   const clPresentCount = filteredCellLeaders.filter(cl => presentCLIds.has(cl.id)).length;
   const clAbsentCount = filteredCellLeaders.length - clPresentCount;
 
+  const todayIso = new Date().toISOString().split('T')[0];
+  const pastAttendanceRecords = submittedEntries.filter(
+    e => e.attendanceStatus === 'present' && e.date === todayIso
+  );
+
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
@@ -922,16 +930,16 @@ export default function EntryPage() {
                 </table>
               </div>
 
-              {/* Submitted Entries */}
-              {new Date().getDay() !== 0 && submittedEntries.length > 0 && (
+              {/* Past Attendance Records */}
+              {new Date().getDay() !== 0 && pastAttendanceRecords.length > 0 && (
                 <div className="mt-8">
-                  <h2 className="text-xl font-bold mb-4 text-gray-800">Submitted Entries</h2>
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">Past Attendance Records</h2>
                   <div className="mb-4">
                     <input
                       type="text"
                       value={submittedSearchQuery}
                       onChange={e => setSubmittedSearchQuery(e.target.value)}
-                      placeholder="Search submitted entries…"
+                      placeholder="Search past attendance records…"
                       className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -945,7 +953,7 @@ export default function EntryPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {submittedEntries
+                        {pastAttendanceRecords
                           .filter(e => {
                             if (!submittedSearchQuery.trim()) return true;
                             const q = submittedSearchQuery.toLowerCase();
