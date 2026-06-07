@@ -13,12 +13,14 @@ import DemographicsCharts from '@/components/DemographicsCharts';
 import FirstTimersAnalysis from '@/components/FirstTimersAnalysis';
 import PastAttendanceEntry from '@/components/PastAttendanceEntry';
 import AbsenteeismTracker from '@/components/AbsenteeismTracker';
+import PastSundaysList from '@/components/PastSundaysList';
 
-type AdminTab = 'overview' | 'past-entry' | 'absenteeism' | 'demographics' | 'first-timers' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
+type AdminTab = 'overview' | 'past-entry' | 'past-sundays' | 'absenteeism' | 'demographics' | 'first-timers' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',      label: 'Overview',        icon: '📊' },
   { id: 'past-entry',    label: 'Past Entry',      icon: '📅' },
+  { id: 'past-sundays',  label: 'Past Sundays',    icon: '🗓️' },
   { id: 'absenteeism',   label: 'Absenteeism',     icon: '🚨' },
   { id: 'demographics',  label: 'Demographics',    icon: '🎂' },
   { id: 'first-timers',  label: 'First Timers',    icon: '🆕' },
@@ -127,6 +129,12 @@ export default function AdminDashboard() {
         { activeTab === 'past-entry' && (
           <div>
             <PastAttendanceEntry />
+          </div>
+        )}
+
+        { activeTab === 'past-sundays' && (
+          <div>
+            <PastSundaysList />
           </div>
         )}
 
