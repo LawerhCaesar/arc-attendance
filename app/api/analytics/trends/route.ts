@@ -17,8 +17,11 @@ export async function GET(request: NextRequest) {
     // Group by service date (attendanceDate = the Sunday of service, not submission date)
     const attendanceByDate: Record<string, number> = {};
     data.forEach(record => {
-      const date = record.attendanceDate || record.date;
-      attendanceByDate[date] = (attendanceByDate[date] || 0) + 1;
+      // Only count members marked as present
+      if (record.attendanceStatus === 'present') {
+        const date = record.attendanceDate || record.date;
+        attendanceByDate[date] = (attendanceByDate[date] || 0) + 1;
+      }
     });
 
     let trends: Array<{ date: string; count: number }> = [];
