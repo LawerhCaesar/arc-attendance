@@ -14,6 +14,7 @@ export interface AttendanceRecord {
   attendanceDate?: string;
   attendanceStatus?: string;
   createdAt?: Date;
+  explicitToggle?: boolean;
 }
 
 export interface Member {
@@ -57,7 +58,7 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
   // Check if record exists
   const { data: existing, error: fetchError } = await supabase
     .from(TABLE_NAME)
-    .select('id')
+    .select('id, attendanceStatus')
     .ilike('name', record.name)
     .eq(dateField, targetDate)
     .limit(1);
@@ -67,21 +68,33 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
   }
 
   if (existing && existing.length > 0) {
+    const existingRecord = existing[0];
+
+    // Prevent overwriting a "present" status with "absent" unless explicitly requested
+    if (
+      existingRecord.attendanceStatus === 'present' &&
+      attendanceRecord.attendanceStatus === 'absent' &&
+      !record.explicitToggle
+    ) {
+      return; // Skip update
+    }
+
     // Update existing record
-    const { createdAt, ...updatePayload } = attendanceRecord;
+    const { createdAt, explicitToggle, ...updatePayload } = attendanceRecord;
     const { error: updateError } = await supabase
       .from(TABLE_NAME)
       .update(updatePayload)
-      .eq('id', existing[0].id);
+      .eq('id', existingRecord.id);
 
     if (updateError) {
       throw new Error(`Failed to update record: ${updateError.message}`);
     }
   } else {
     // Insert new
+    const { createdAt, explicitToggle, ...insertPayload } = attendanceRecord;
     const { error: insertError } = await supabase
       .from(TABLE_NAME)
-      .insert([attendanceRecord]);
+      .insert([{ ...insertPayload, createdAt }]);
 
     if (insertError) {
       throw new Error(`Failed to insert record: ${insertError.message}`);

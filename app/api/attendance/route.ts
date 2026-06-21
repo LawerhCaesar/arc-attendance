@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       designation,
       attendanceDate,
       attendanceStatus,
+      explicitToggle,
     } = body;
 
     // Name is required; fellowship/phone/birthday/location are optional
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
       designation: designation || 'Member',
       attendanceDate: serviceSunday,
       attendanceStatus: attendanceStatus || '',
+      explicitToggle: explicitToggle === true,
     };
 
     await appendAttendance(record);

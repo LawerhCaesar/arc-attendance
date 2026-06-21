@@ -676,6 +676,7 @@ export default function EntryPage() {
           birthday: merged.birthday, fellowship: merged.fellowship,
           designation: merged.designation, firstTimer: merged.firstTimer,
           attendanceDate: merged.attendanceDate, attendanceStatus: merged.attendanceStatus,
+          explicitToggle: true,
         }),
       });
       if (res.ok) {
@@ -701,6 +702,7 @@ export default function EntryPage() {
           birthday: record.birthday, fellowship: record.fellowship,
           designation: record.designation, firstTimer: record.firstTimer,
           attendanceDate: record.attendanceDate, attendanceStatus: newStatus,
+          explicitToggle: true,
         }),
       });
       if (res.ok) {
