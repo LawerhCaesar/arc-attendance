@@ -5,7 +5,7 @@ export const FELLOWSHIPS = [
   'Katalambano',
   'Pleroma',
   'Young and Ready',
-  'HSM',
+  'Tsalach',
   'Menorah',
   'Enthroned',
   'Mega',

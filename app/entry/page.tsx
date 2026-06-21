@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
+import { FELLOWSHIPS } from '@/lib/fellowships';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -880,7 +881,11 @@ export default function EntryPage() {
                               <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
-                              <input type="text" value={entry.fellowship} onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Fellowship" />
+                              <select value={entry.fellowship} onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)}>
+                                <option value="" disabled>Select Fellowship</option>
+                                {FELLOWSHIPS.map(f => <option key={f} value={f}>{f}</option>)}
+                                {entry.fellowship && !FELLOWSHIPS.includes(entry.fellowship) && <option value={entry.fellowship}>{entry.fellowship}</option>}
+                              </select>
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
                               {isEditing ? (
@@ -1074,7 +1079,11 @@ export default function EntryPage() {
                                       <input type="text" value={merged.location} onChange={e => handleLastSundayFieldChange(record.id, 'location', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Location" />
                                     </td>
                                     <td className="px-3 py-2 border-r border-gray-200 min-w-[110px]">
-                                      <input type="text" value={merged.fellowship} onChange={e => handleLastSundayFieldChange(record.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Fellowship" />
+                                      <select value={merged.fellowship} onChange={e => handleLastSundayFieldChange(record.id, 'fellowship', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)}>
+                                        <option value="" disabled>Select Fellowship</option>
+                                        {FELLOWSHIPS.map(f => <option key={f} value={f}>{f}</option>)}
+                                        {merged.fellowship && !FELLOWSHIPS.includes(merged.fellowship) && <option value={merged.fellowship}>{merged.fellowship}</option>}
+                                      </select>
                                     </td>
                                     <td className="px-3 py-2 border-r border-gray-200 min-w-[130px]">
                                       {isEditing ? (
