@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import DashboardStats from '@/components/DashboardStats';
 import AttendanceTrends from '@/components/AttendanceTrends';
-import FellowshipBreakdown from '@/components/FellowshipBreakdown';
-import CellLeaderStats from '@/components/CellLeaderStats';
+import FellowshipServiceBreakdown from '@/components/FellowshipServiceBreakdown';
 import MemberRoster from '@/components/MemberRoster';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
@@ -15,19 +14,18 @@ import PastAttendanceEntry from '@/components/PastAttendanceEntry';
 import AbsenteeismTracker from '@/components/AbsenteeismTracker';
 import PastSundaysList from '@/components/PastSundaysList';
 
-type AdminTab = 'overview' | 'past-entry' | 'past-sundays' | 'absenteeism' | 'demographics' | 'first-timers' | 'fellowship' | 'cell-leaders' | 'members' | 'raw-data';
+type AdminTab = 'overview' | 'past-entry' | 'past-sundays' | 'absenteeism' | 'demographics' | 'first-timers' | 'fellowship-services' | 'members' | 'raw-data';
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
-  { id: 'overview',      label: 'Overview',        icon: '📊' },
-  { id: 'past-entry',    label: 'Past Entry',      icon: '📅' },
-  { id: 'past-sundays',  label: 'Past Sundays',    icon: '🗓️' },
-  { id: 'absenteeism',   label: 'Absenteeism',     icon: '🚨' },
-  { id: 'demographics',  label: 'Demographics',    icon: '🎂' },
-  { id: 'first-timers',  label: 'First Timers',    icon: '🆕' },
-  { id: 'fellowship',    label: 'By Fellowship',   icon: '🏛️' },
-  { id: 'cell-leaders',  label: 'Cell Leaders',    icon: '👥' },
-  { id: 'members',       label: 'Member Roster',   icon: '📋' },
-  { id: 'raw-data',      label: 'Raw Data',        icon: '🗃️' },
+  { id: 'overview',             label: 'Overview',          icon: '📊' },
+  { id: 'past-entry',           label: 'Past Entry',        icon: '📅' },
+  { id: 'past-sundays',         label: 'Past Sundays',      icon: '🗓️' },
+  { id: 'absenteeism',          label: 'Absenteeism',       icon: '🚨' },
+  { id: 'demographics',         label: 'Demographics',      icon: '🎂' },
+  { id: 'first-timers',         label: 'First Timers',      icon: '🆕' },
+  { id: 'fellowship-services',  label: 'By Fellowship',     icon: '🏛️' },
+  { id: 'members',              label: 'Member Roster',     icon: '📋' },
+  { id: 'raw-data',             label: 'Raw Data',          icon: '🗃️' },
 ];
 
 export default function AdminDashboard() {
@@ -168,23 +166,13 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'fellowship' && (
+        {activeTab === 'fellowship-services' && (
           <div>
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Fellowship Breakdown</h2>
-              <p className="text-gray-500 text-sm mt-1">Attendance performance per fellowship group</p>
+              <h2 className="text-2xl font-bold text-gray-900">Fellowship Breakdown by Service</h2>
+              <p className="text-gray-500 text-sm mt-1">Attendance per fellowship for each recorded service</p>
             </div>
-            <FellowshipBreakdown />
-          </div>
-        )}
-
-        {activeTab === 'cell-leaders' && (
-          <div>
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Cell Leader Attendance</h2>
-              <p className="text-gray-500 text-sm mt-1">Attendance rates and history for all cell leaders</p>
-            </div>
-            <CellLeaderStats />
+            <FellowshipServiceBreakdown />
           </div>
         )}
 
