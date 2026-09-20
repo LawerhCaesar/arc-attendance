@@ -187,7 +187,7 @@ for each row execute function public.set_updated_at();
 insert into public.fellowships (name)
 values
   ('All Grace'), ('Parakletos'), ('Special Dunamis'), ('Katalambano'),
-  ('Pleroma'), ('Young and Ready'), ('Tsalach'), ('Menorah'),
+  ('Pleroma'), ('Young and Ready'), ('Shalach'), ('Menorah'),
   ('Enthroned'), ('Mega'), ('Professionals')
 on conflict (name) do nothing;
 

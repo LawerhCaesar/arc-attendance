@@ -46,6 +46,10 @@ fills missing primary fields, moves matching attendance history to the primary
 identity, deactivates the secondary roster record, and stores the before-state
 for audit or recovery.
 
+Apply `supabase/migrations/202609200001_rename_tsalach_to_shalach.sql` after
+the foundation migrations. It makes `Shalach` the canonical fellowship name
+and safely migrates legacy `HSM` and `Tsalach` values.
+
 The migration does not modify or remove legacy data. Backfill should be a
 separate reviewed operation because duplicate names and missing phone numbers
 need human resolution.

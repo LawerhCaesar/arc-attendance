@@ -11,7 +11,7 @@ const member = (id: string, name: string, phone: string, fellowship: string) => 
 
 test('matches reordered names and Ghana phone formats', () => {
   const candidate = duplicateCandidateForPair(
-    member('1', 'Ama Serwaa Mensah', '024 123 4567', 'Tsalach'),
+    member('1', 'Ama Serwaa Mensah', '024 123 4567', 'Shalach'),
     member('2', 'Mensah Ama Serwaa', '+233 24 123 4567', 'Grace'),
   );
   assert.ok(candidate);
@@ -31,7 +31,7 @@ test('flags a minor name variation in the same fellowship', () => {
 test('does not flag similar names without supporting contact or fellowship evidence', () => {
   const candidate = duplicateCandidateForPair(
     member('1', 'John Mensah', '0240000000', 'Pleroma'),
-    member('2', 'Jon Mensah', '0559999999', 'Tsalach'),
+    member('2', 'Jon Mensah', '0559999999', 'Shalach'),
   );
   assert.equal(candidate, null);
 });

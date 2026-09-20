@@ -5,7 +5,7 @@ export const FELLOWSHIPS = [
   'Katalambano',
   'Pleroma',
   'Young and Ready',
-  'Tsalach',
+  'Shalach',
   'Menorah',
   'Enthroned',
   'Mega',
@@ -44,7 +44,8 @@ function levenshteinDistance(a: string, b: string): number {
 
 // Explicit aliases: keys are lowercase, values must be in FELLOWSHIPS
 const ALIASES: Record<string, string> = {
-  'hsm': 'Tsalach',
+  'hsm': 'Shalach',
+  'tsalach': 'Shalach',
 };
 
 export function matchFellowship(input: string | null | undefined): string {
