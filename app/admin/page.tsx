@@ -3,13 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import DashboardStats from '@/components/DashboardStats';
-import AttendanceTrends from '@/components/AttendanceTrends';
+import PastorDashboard from '@/components/PastorDashboard';
 import FellowshipServiceBreakdown from '@/components/FellowshipServiceBreakdown';
 import MemberRoster from '@/components/MemberRoster';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
-import FirstTimersAnalysis from '@/components/FirstTimersAnalysis';
+import FirstTimerWorkspace from '@/components/FirstTimerWorkspace';
 import PastAttendanceEntry from '@/components/PastAttendanceEntry';
 import AbsenteeismTracker from '@/components/AbsenteeismTracker';
 import PastSundaysList from '@/components/PastSundaysList';
@@ -31,13 +30,29 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
 export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [sessionRole, setSessionRole] = useState('');
   const router = useRouter();
 
   useEffect(() => {
     fetch('/api/auth/check')
-      .then(res => {
-        if (!res.ok) router.push('/admin/login');
-        else setIsLoading(false);
+      .then(async res => {
+        if (!res.ok) {
+          router.push('/admin/login');
+          return;
+        }
+        const session = await res.json();
+        if (!['admin', 'pastor'].includes(session.role)) {
+          const roleHomes: Record<string, string> = {
+            welfare: '/welfare',
+            first_timers: '/first-timers',
+            attendance: '/entry',
+            fellowship_leader: '/entry',
+          };
+          router.push(roleHomes[session.role] || '/admin/login');
+          return;
+        }
+        setSessionRole(session.role);
+        setIsLoading(false);
       })
       .catch(() => router.push('/admin/login'));
   }, [router]);
@@ -114,14 +129,7 @@ export default function AdminDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {activeTab === 'overview' && (
-          <div>
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Attendance Overview</h2>
-              <p className="text-gray-500 text-sm mt-1">All-time summary across all fellowships</p>
-            </div>
-            <DashboardStats />
-            <AttendanceTrends />
-          </div>
+          <PastorDashboard onNavigate={setActiveTab} />
         )}
 
         { activeTab === 'past-entry' && (
@@ -162,7 +170,7 @@ export default function AdminDashboard() {
               <h2 className="text-2xl font-bold text-gray-900">First Timer Analysis</h2>
               <p className="text-gray-500 text-sm mt-1">Track first-time visitors and their attendance history</p>
             </div>
-            <FirstTimersAnalysis />
+            <FirstTimerWorkspace />
           </div>
         )}
 
@@ -182,7 +190,7 @@ export default function AdminDashboard() {
               <h2 className="text-2xl font-bold text-gray-900">Member Roster</h2>
               <p className="text-gray-500 text-sm mt-1">Manage the pre-loaded member roster used for Cell Leader Check-In</p>
             </div>
-            <MemberRoster />
+            <MemberRoster canReviewDuplicates={sessionRole === 'admin'} />
           </div>
         )}
 

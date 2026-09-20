@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 
@@ -343,7 +343,7 @@ export default function EntryPage() {
   };
 
   // ── Fetch Cell Leaders ──
-  const fetchCellLeaders = async () => {
+  const fetchCellLeaders = useCallback(async () => {
     setIsLoadingCL(true);
     try {
       const res = await fetch('/api/members?designation=Cell Leader,Fellowship Leader');
@@ -356,7 +356,7 @@ export default function EntryPage() {
     } finally {
       setIsLoadingCL(false);
     }
-  };
+  }, []);
 
   // ── Auto submit absent at 23:59 ──
   useEffect(() => {
@@ -415,12 +415,11 @@ export default function EntryPage() {
     if (!isInitialLoad) savePersistedData(entries, markedPresent);
   }, [entries, markedPresent, isInitialLoad]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (activeTab === 'cell-leaders' && cellLeaders.length === 0 && !isLoadingCL) {
       fetchCellLeaders();
     }
-  }, [activeTab]);
+  }, [activeTab, cellLeaders.length, fetchCellLeaders, isLoadingCL]);
 
   // ── Regular Entry Handlers ──
   const handleCellChange = (id: string, field: keyof AttendanceEntry, value: string | boolean) => {
@@ -841,7 +840,7 @@ export default function EntryPage() {
                 <table className="min-w-full divide-y divide-gray-200 border border-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
-                      {['NAME', 'CONTACT', 'DATE OF BIRTH', 'LOCATION', 'FELLOWSHIP', 'DESIGNATION', 'FIRST TIME?', 'ACTIONS'].map(h => (
+                      {['NAME', 'CONTACT', 'DATE OF BIRTH', 'LOCATION', 'FELLOWSHIP', 'DESIGNATION', 'VISITOR CHECK', 'ACTIONS'].map(h => (
                         <th key={h} className={`px-3 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider border-r border-gray-300 last:border-r-0 ${h === 'NAME' ? 'min-w-[200px] sm:min-w-[250px]' : ''}`}>
                           {h}
                         </th>
@@ -902,10 +901,10 @@ export default function EntryPage() {
                                 </span>
                               )}
                             </td>
-                            <td className="px-3 py-2 border-r border-gray-300">
-                              <div className="flex items-center justify-center">
-                                <input type="checkbox" checked={entry.firstTimer} onChange={e => handleCellChange(entry.id, 'firstTimer', e.target.checked)} disabled={!isEditing} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed" />
-                              </div>
+                            <td className="px-3 py-2 border-r border-gray-300 text-center">
+                              <span className="inline-flex rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700" title="The roster is checked when this attendance is submitted">
+                                Automatic
+                              </span>
                             </td>
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-1">
@@ -1003,7 +1002,7 @@ export default function EntryPage() {
                 <div className="mt-8">
                   <div className="flex justify-between items-center mb-3">
                     <div>
-                      <h2 className="text-xl font-bold text-gray-800">Last Sunday's Records</h2>
+                      <h2 className="text-xl font-bold text-gray-800">Last Sunday&apos;s Records</h2>
                       <p className="text-xs text-amber-600 mt-0.5">
                         {(() => {
                           const [y, m, d] = getMostRecentSunday().split('-').map(Number);

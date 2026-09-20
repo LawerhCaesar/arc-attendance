@@ -56,12 +56,17 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
   const dateField = record.attendanceDate ? 'attendanceDate' : 'date';
 
   // Check if record exists
-  const { data: existing, error: fetchError } = await supabase
+  let existingQuery = supabase
     .from(TABLE_NAME)
     .select('id, attendanceStatus')
-    .ilike('name', record.name)
     .eq(dateField, targetDate)
     .limit(1);
+
+  existingQuery = record.phone?.trim()
+    ? existingQuery.eq('phone', record.phone.trim())
+    : existingQuery.ilike('name', record.name).eq('fellowship', matchFellowship(record.fellowship));
+
+  const { data: existing, error: fetchError } = await existingQuery;
 
   if (fetchError) {
     throw new Error(`Failed to check existing record: ${fetchError.message}`);
@@ -181,6 +186,45 @@ export async function getMembers(
   return data || [];
 }
 
+const normalizedPhone = (value?: string) => (value || '').replace(/\D/g, '');
+const normalizedText = (value?: string) => (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Find an active roster member using phone first, then name and fellowship. */
+export async function findRosterMember(
+  person: Pick<Member, 'name' | 'phone' | 'fellowship'>
+): Promise<Member | null> {
+  const phone = normalizedPhone(person.phone);
+
+  if (person.phone?.trim()) {
+    const { data: exactPhone, error: phoneError } = await supabase
+      .from(MEMBERS_TABLE)
+      .select('*')
+      .eq('is_active', true)
+      .eq('phone', person.phone.trim())
+      .limit(1);
+    if (phoneError) throw new Error(`Failed to check member roster: ${phoneError.message}`);
+    if (exactPhone?.[0]) return exactPhone[0] as Member;
+  }
+
+  // Legacy phone values are not normalized, so compare a bounded active roster
+  // locally after the fast exact-phone lookup. This catches spaces, dashes and
+  // country-code formatting differences before falling back to name/fellowship.
+  const { data: candidates, error: rosterError } = await supabase
+    .from(MEMBERS_TABLE)
+    .select('*')
+    .eq('is_active', true)
+    .limit(2000);
+  if (rosterError) throw new Error(`Failed to check member roster: ${rosterError.message}`);
+
+  const match = (candidates || []).find(candidate => {
+    const candidatePhone = normalizedPhone(candidate.phone);
+    if (phone && candidatePhone) return phone === candidatePhone;
+    return normalizedText(candidate.name) === normalizedText(person.name) &&
+      normalizedText(candidate.fellowship) === normalizedText(person.fellowship);
+  });
+  return (match as Member | undefined) || null;
+}
+
 export async function createMember(
   member: Omit<Member, 'id' | 'created_at' | 'updated_at'>
 ): Promise<Member> {
@@ -203,19 +247,35 @@ export async function createMember(
 }
 
 /** Auto-sync Member from Attendance */
-export async function syncMemberFromAttendance(record: AttendanceRecord): Promise<void> {
+export async function syncMemberFromAttendance(record: AttendanceRecord, memberId?: string): Promise<void> {
   if (!record.name) return;
-  
-  let query = supabase
-    .from(MEMBERS_TABLE)
-    .select('id')
-    .ilike('name', record.name);
 
-  if (record.fellowship) {
-    query = query.eq('fellowship', matchFellowship(record.fellowship));
+  if (memberId) {
+    const updatePayload: Partial<Member> & { updated_at: string } = { updated_at: new Date().toISOString() };
+    if (record.designation) updatePayload.designation = record.designation;
+    if (record.phone) updatePayload.phone = record.phone;
+    if (record.location) updatePayload.location = record.location;
+    if (record.birthday) updatePayload.birthday = record.birthday;
+
+    const { error } = await supabase.from(MEMBERS_TABLE).update(updatePayload).eq('id', memberId);
+    if (error) throw new Error(`Failed to sync roster member: ${error.message}`);
+    return;
   }
 
-  const { data: existing } = await query.maybeSingle();
+  // Imports may contain two different people with similar names. Only a stable
+  // phone match is safe to update automatically; name/fellowship similarities
+  // are left as separate records for the admin review queue.
+  let existing: { id: string } | undefined;
+  const recordPhone = normalizedPhone(record.phone);
+  if (recordPhone) {
+    const { data: candidates, error } = await supabase
+      .from(MEMBERS_TABLE)
+      .select('id, phone')
+      .eq('is_active', true)
+      .limit(2000);
+    if (error) throw new Error(`Failed to check roster phone: ${error.message}`);
+    existing = (candidates || []).find(candidate => normalizedPhone(candidate.phone) === recordPhone);
+  }
 
   if (!existing) {
     await createMember({

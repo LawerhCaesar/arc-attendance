@@ -42,6 +42,11 @@ function levenshteinDistance(a: string, b: string): number {
   return matrix[b.length][a.length];
 }
 
+// Explicit aliases: keys are lowercase, values must be in FELLOWSHIPS
+const ALIASES: Record<string, string> = {
+  'hsm': 'Tsalach',
+};
+
 export function matchFellowship(input: string | null | undefined): string {
   if (!input || typeof input !== 'string') return 'Unassigned';
   
@@ -49,6 +54,9 @@ export function matchFellowship(input: string | null | undefined): string {
   if (cleanInput === '' || cleanInput === 'unassigned' || cleanInput === 'none' || cleanInput === 'n/a') {
     return 'Unassigned';
   }
+
+  // Check explicit aliases first
+  if (ALIASES[cleanInput]) return ALIASES[cleanInput];
 
   let bestMatch = 'Unassigned';
   let bestScore = 0;

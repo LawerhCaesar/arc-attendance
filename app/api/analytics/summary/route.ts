@@ -4,7 +4,7 @@ import { isAuthenticated } from '@/lib/auth';
 
 export async function GET() {
   try {
-    const authenticated = await isAuthenticated();
+    const authenticated = await isAuthenticated(['admin', 'pastor']);
     if (!authenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

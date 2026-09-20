@@ -5,7 +5,7 @@ import { matchFellowship } from '@/lib/fellowships';
 
 export async function POST() {
   try {
-    const authenticated = await isAuthenticated();
+    const authenticated = await isAuthenticated(['admin']);
     if (!authenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncMemberFromAttendance } from '@/lib/database';
+import { getAuthContext } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const context = await getAuthContext();
+    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { members } = body;
 
     if (!Array.isArray(members)) {
       return NextResponse.json({ error: 'Members must be an array' }, { status: 400 });
+    }
+
+    if (context.role === 'fellowship_leader' && (
+      !context.fellowship || members.some(member => member.fellowship !== context.fellowship)
+    )) {
+      return NextResponse.json({ error: 'Outside your fellowship scope' }, { status: 403 });
     }
 
     // Sync each member into the database

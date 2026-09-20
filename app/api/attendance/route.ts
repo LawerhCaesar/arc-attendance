@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { appendAttendance, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
+import { appendAttendance, findRosterMember, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
+import { getAuthContext } from '@/lib/auth';
+import { recordFirstTimerJourney } from '@/lib/visitor-journeys';
 
 /**
  * Snaps a YYYY-MM-DD date string to the most recent Sunday (local time).
@@ -19,6 +21,11 @@ function snapToSunday(isoDate: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const context = await getAuthContext();
+    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const {
       name,
@@ -56,14 +63,27 @@ export async function POST(request: NextRequest) {
     const rawDate = attendanceDate || new Date().toISOString().split('T')[0];
     const serviceSunday = snapToSunday(rawDate);
 
+    const rosterMember = await findRosterMember({
+      name: name.trim(),
+      phone: (phone || '').trim(),
+      fellowship: (fellowship || '').trim(),
+    });
+    const automaticallyFirstTimer = !rosterMember;
+    const preservedFirstTimer = firstTimer === true || firstTimer === 'true' || firstTimer === 'yes';
+    const effectiveFellowship = rosterMember?.fellowship || (fellowship || '').trim();
+
+    if (context.role === 'fellowship_leader' && (!context.fellowship || effectiveFellowship !== context.fellowship)) {
+      return NextResponse.json({ error: 'Outside your fellowship scope' }, { status: 403 });
+    }
+
     const record = {
       date: new Date().toISOString().split('T')[0], // submission timestamp
       name: name.trim(),
-      phone: (phone || '').trim(),
+      phone: (rosterMember?.phone || phone || '').trim(),
       location: (location || '').trim(),
       birthday: (birthday || '').trim(),
-      fellowship: (fellowship || '').trim(),
-      firstTimer: firstTimer === true || firstTimer === 'true' || firstTimer === 'yes' ? 'Yes' : 'No',
+      fellowship: effectiveFellowship,
+      firstTimer: (explicitToggle ? preservedFirstTimer : automaticallyFirstTimer) ? 'Yes' : 'No',
       designation: designation || 'Member',
       attendanceDate: serviceSunday,
       attendanceStatus: attendanceStatus || '',
@@ -71,10 +91,17 @@ export async function POST(request: NextRequest) {
     };
 
     await appendAttendance(record);
-    await syncMemberFromAttendance(record);
+    if (rosterMember) {
+      await syncMemberFromAttendance(record, rosterMember.id);
+    } else if (record.firstTimer === 'Yes') {
+      await recordFirstTimerJourney(record);
+    }
 
     return NextResponse.json(
-      { message: 'Attendance recorded successfully' },
+      {
+        message: 'Attendance recorded successfully',
+        firstTimer: record.firstTimer === 'Yes',
+      },
       { status: 201 }
     );
   } catch (error: any) {
@@ -88,7 +115,15 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const data = await getAttendanceData();
+    const context = await getAuthContext();
+    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const allData = await getAttendanceData();
+    const data = context.role === 'fellowship_leader'
+      ? allData.filter(record => record.fellowship === context.fellowship)
+      : allData;
 
     const entries = data.map((record, index) => ({
       id: `record-${index}-${record.date}`,

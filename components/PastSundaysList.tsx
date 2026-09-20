@@ -243,7 +243,7 @@ export default function PastSundaysList() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <div className="text-5xl mb-4">📅</div>
           <p className="text-gray-500 font-medium">No records found for this Sunday.</p>
-          <p className="text-sm text-gray-400 mt-1">If attendance wasn't taken, there will be no records here.</p>
+          <p className="text-sm text-gray-400 mt-1">If attendance wasn&apos;t taken, there will be no records here.</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">

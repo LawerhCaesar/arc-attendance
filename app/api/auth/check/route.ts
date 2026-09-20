@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import { isAuthenticated } from '@/lib/auth';
+import { getAuthContext } from '@/lib/auth';
 
 export async function GET() {
-  const authenticated = await isAuthenticated();
+  const context = await getAuthContext();
   
-  if (authenticated) {
-    return NextResponse.json({ authenticated: true }, { status: 200 });
+  if (context) {
+    return NextResponse.json({ authenticated: true, ...context }, { status: 200 });
   }
   
   return NextResponse.json({ authenticated: false }, { status: 401 });
 }
-

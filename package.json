@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.ts,.tsx --ignore-pattern .next",
+    "test": "tsx --test tests/**/*.test.ts",
     "init-db": "tsx scripts/init-db.ts"
   },
   "dependencies": {

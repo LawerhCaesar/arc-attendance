@@ -14,9 +14,16 @@ export default function AdminLoginPage() {
   useEffect(() => {
     // Check if already logged in
     fetch('/api/auth/check')
-      .then(res => {
+      .then(async res => {
         if (res.ok) {
-          router.push('/admin');
+          const session = await res.json();
+          const roleHomes: Record<string, string> = {
+            welfare: '/welfare',
+            first_timers: '/first-timers',
+            attendance: '/entry',
+            fellowship_leader: '/entry',
+          };
+          router.push(roleHomes[session.role] || '/admin');
         }
       })
       .catch(() => {
@@ -41,7 +48,7 @@ export default function AdminLoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        router.push('/admin');
+        router.push(data.redirectTo || '/admin');
         router.refresh();
       } else {
         setError(data.error || 'Invalid credentials');
@@ -58,7 +65,8 @@ export default function AdminLoginPage() {
       <Navbar />
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] px-4">
         <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-6 text-gray-800">Admin Login</h1>
+          <h1 className="text-2xl font-bold mb-2 text-gray-800">Staff sign in</h1>
+          <p className="text-sm text-gray-500 mb-6">Access attendance tools and pastoral insights securely.</p>
           
           {error && (
             <div className="mb-4 p-4 bg-red-100 text-red-800 rounded">
@@ -112,4 +120,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-

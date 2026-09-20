@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMembers, createMember } from '@/lib/database';
-import { isAuthenticated } from '@/lib/auth';
+import { getAuthContext, isAuthenticated } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    // Members list is also used by the entry page (Cell Leader mode) — no auth required for GET
+    const context = await getAuthContext();
+    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const designation = searchParams.get('designation') || undefined;
-    const fellowship = searchParams.get('fellowship') || undefined;
+    const requestedFellowship = searchParams.get('fellowship') || undefined;
+    const fellowship = context.role === 'fellowship_leader'
+      ? context.fellowship
+      : requestedFellowship;
+
+    if (context.role === 'fellowship_leader' && !fellowship) {
+      return NextResponse.json({ error: 'No fellowship scope configured' }, { status: 403 });
+    }
 
     const members = await getMembers(designation, fellowship);
     return NextResponse.json(members);
@@ -22,7 +33,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authenticated = await isAuthenticated();
+    const authenticated = await isAuthenticated(['admin', 'pastor']);
     if (!authenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

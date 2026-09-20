@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
+import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 
 interface Member {
   id: string;
@@ -26,7 +27,7 @@ const emptyForm = (): Omit<Member, 'id'> => ({
   name: '', phone: '', fellowship: '', designation: 'Cell Leader', birthday: '', location: '',
 });
 
-export default function MemberRoster() {
+export default function MemberRoster({ canReviewDuplicates = false }: { canReviewDuplicates?: boolean }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -39,6 +40,7 @@ export default function MemberRoster() {
   const [formError, setFormError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicateReviewVersion, setDuplicateReviewVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchMembers = useCallback(async () => {
@@ -95,6 +97,7 @@ export default function MemberRoster() {
         setSuccessMsg(isEdit ? 'Member updated.' : 'Member added to roster.');
         setShowForm(false);
         await fetchMembers();
+        setDuplicateReviewVersion(value => value + 1);
         setTimeout(() => setSuccessMsg(null), 3000);
       } else {
         const d = await res.json();
@@ -112,6 +115,7 @@ export default function MemberRoster() {
       if (res.ok) {
         setSuccessMsg('Member removed.');
         await fetchMembers();
+        setDuplicateReviewVersion(value => value + 1);
         setTimeout(() => setSuccessMsg(null), 3000);
       }
     } catch {}
@@ -189,6 +193,7 @@ export default function MemberRoster() {
           if (res.ok) {
             setSuccessMsg(`Imported and saved ${imported.length} members to roster.`);
             fetchMembers();
+            setDuplicateReviewVersion(value => value + 1);
             setTimeout(() => setSuccessMsg(null), 5000);
           } else {
             setFormError(`Failed to sync database.`);
@@ -214,6 +219,8 @@ export default function MemberRoster() {
       {successMsg && (
         <div className="p-3 bg-green-100 text-green-800 rounded-xl text-sm font-medium">{successMsg}</div>
       )}
+
+      {canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
 
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">

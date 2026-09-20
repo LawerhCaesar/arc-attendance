@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getAuthContext } from '@/lib/auth';
 
 /**
  * GET /api/attendance/by-date?date=YYYY-MM-DD
  * Returns all attendance records for a specific attendanceDate (must be a Sunday).
  */
 export async function GET(request: NextRequest) {
+  const context = await getAuthContext();
+  if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const date = request.nextUrl.searchParams.get('date');
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -15,12 +21,21 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('attendance')
     .select('*')
     .eq('attendanceDate', date)
     .order('fellowship', { ascending: true })
     .order('name', { ascending: true });
+
+  if (context.role === 'fellowship_leader') {
+    if (!context.fellowship) {
+      return NextResponse.json({ error: 'No fellowship scope configured' }, { status: 403 });
+    }
+    query = query.eq('fellowship', context.fellowship);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Error fetching attendance by date:', error);

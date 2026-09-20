@@ -595,7 +595,7 @@ export default function PastAttendanceEntry() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {['NAME', 'CONTACT', 'DATE OF BIRTH', 'LOCATION', 'FELLOWSHIP', 'DESIGNATION', 'FIRST TIME?', 'ACTIONS'].map(h => (
+              {['NAME', 'CONTACT', 'DATE OF BIRTH', 'LOCATION', 'FELLOWSHIP', 'DESIGNATION', 'VISITOR CHECK', 'ACTIONS'].map(h => (
                 <th key={h} className={`px-3 py-3 text-left text-xs font-medium text-gray-900 uppercase tracking-wider border-r border-gray-300 last:border-r-0 ${h === 'NAME' ? 'min-w-[200px] sm:min-w-[250px]' : ''}`}>
                   {h}
                 </th>
@@ -668,10 +668,10 @@ export default function PastAttendanceEntry() {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2 border-r border-gray-300">
-                        <div className="flex items-center justify-center">
-                          <input type="checkbox" checked={entry.firstTimer} onChange={e => handleCellChange(entry.id, 'firstTimer', e.target.checked)} disabled={!isEditing} className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed" />
-                        </div>
+                        <td className="px-3 py-2 border-r border-gray-300 text-center">
+                          <span className="inline-flex rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700" title="The roster is checked when this attendance is submitted">
+                            Automatic
+                          </span>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
