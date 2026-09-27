@@ -57,6 +57,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
   const [expanded, setExpanded] = useState(false);
   const [workingGroup, setWorkingGroup] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCandidates, setTotalCandidates] = useState(0);
@@ -66,7 +67,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/admin/member-duplicates?page=${targetPage}&pageSize=5`);
+      const response = await fetch(`/api/admin/member-duplicates?page=${targetPage}&pageSize=5`, { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Duplicate scan failed');
       setGroups(result.groups || []);
@@ -85,9 +86,11 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
   useEffect(() => { load(page); }, [load, page, refreshKey]);
 
   const decide = async (group: DuplicateGroup, action: 'keep_separate' | 'merge') => {
+    if (workingGroup) return;
     if (action === 'merge' && !confirm(`Merge ${group.matchCount} matching record(s) into the selected primary? All attendance history will belong to the primary member. Existing values will be preserved and empty fields will be filled from the other records.`)) return;
     setWorkingGroup(group.groupKey);
     setError('');
+    setNotice('');
     try {
       const response = await fetch('/api/admin/member-duplicates', {
         method: 'POST',
@@ -99,13 +102,18 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
           primaryId: primaryByGroup[group.groupKey],
         }),
       });
-      const result = await response.json();
+      const result = await response.json().catch(() => ({ error: 'The server did not confirm the outcome. Check the refreshed review before trying again.' }));
       if (!response.ok) throw new Error(result.error || 'Decision could not be saved');
+      setGroups(current => current.filter(item => item.groupKey !== group.groupKey));
       if (action === 'merge') await onRosterChanged();
       const targetPage = groups.length === 1 && page > 1 ? page - 1 : page;
       if (targetPage !== page) setPage(targetPage);
       else await load(targetPage);
+      setNotice(result.alreadyMerged ? 'This group was already merged successfully. The review is now up to date.'
+        : action === 'merge' ? `Merged ${result.mergedRecords} records and their attendance history into the primary member.`
+        : 'The selected records will remain separate.');
     } catch (caught) {
+      await load(page);
       setError(caught instanceof Error ? caught.message : 'Decision could not be saved');
     } finally {
       setWorkingGroup(null);
@@ -127,7 +135,9 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
         <span className="shrink-0 text-sm font-semibold text-amber-900">{expanded ? 'Hide' : 'Review'}</span>
       </button>
 
+      {notice && <div role="status" className="mx-4 mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</div>}
       {error && <div className="mx-4 mb-4 rounded-lg border border-red-200 bg-white p-3 text-sm text-red-700">{error}</div>}
+      <div className="px-4 pb-3"><button type="button" disabled={Boolean(workingGroup)} onClick={() => load(page)} className="text-xs font-semibold text-amber-900 underline disabled:opacity-50">Refresh matches</button></div>
       {expanded && (
         <div className="space-y-4 border-t border-amber-200 bg-white p-4">
           {groups.length === 0 ? (
@@ -158,8 +168,8 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
                 )}
               </div>
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" disabled={workingGroup === group.groupKey} onClick={() => decide(group, 'keep_separate')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Keep group separate</button>
-                <button type="button" disabled={workingGroup === group.groupKey} onClick={() => decide(group, 'merge')} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{workingGroup === group.groupKey ? 'Merging group…' : `Merge all ${group.matchCount} into selected primary`}</button>
+                <button type="button" disabled={Boolean(workingGroup)} onClick={() => decide(group, 'keep_separate')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Keep group separate</button>
+                <button type="button" disabled={Boolean(workingGroup)} onClick={() => decide(group, 'merge')} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{workingGroup === group.groupKey ? 'Saving decision…' : `Merge all ${group.matchCount} into selected primary`}</button>
               </div>
             </article>
           ))}
@@ -167,8 +177,8 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-4 sm:flex-row">
               <p className="text-sm text-gray-500">Page {page} of {totalPages} · {totalGroups} groups · {totalCandidates} related records</p>
               <div className="flex gap-2">
-                <button type="button" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1 || isLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Previous</button>
-                <button type="button" onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages || isLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Next</button>
+                <button type="button" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1 || isLoading || Boolean(workingGroup)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Previous</button>
+                <button type="button" onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages || isLoading || Boolean(workingGroup)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Next</button>
               </div>
             </div>
           )}

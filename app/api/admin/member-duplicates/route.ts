@@ -9,6 +9,30 @@ import {
 } from '@/lib/member-duplicates';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { fetchAllRows } from '@/lib/pagination';
+import { evaluateMemberMerge } from '@/lib/member-merge-state';
+
+export const dynamic = 'force-dynamic';
+const liveHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
+interface ReviewedMember extends DuplicateMember { is_active: boolean; merged_into_id?: string | null }
+
+async function loadReviewedMembers(admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>, ids: string[]) {
+  const members: ReviewedMember[] = [];
+  // Keep URLs short, and load only the selected group, including already-merged
+  // records so a completed request can be retried safely.
+  for (let start = 0; start < ids.length; start += 400) {
+    const batches: PromiseLike<{ data: ReviewedMember[] | null; error: { message: string } | null }>[] = [];
+    for (let offset = start; offset < Math.min(start + 400, ids.length); offset += 100) {
+      batches.push(admin.from('members')
+        .select('id, name, phone, fellowship, designation, birthday, location, created_at, is_active, merged_into_id')
+        .in('id', ids.slice(offset, offset + 100)));
+    }
+    for (const result of await Promise.all(batches)) {
+      if (result.error) throw new Error(result.error.message);
+      members.push(...(result.data || []));
+    }
+  }
+  return members;
+}
 
 function orderedIds(left: string, right: string): [string, string] {
   return left.localeCompare(right) <= 0 ? [left, right] : [right, left];
@@ -61,7 +85,7 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       totalPages,
-    });
+    }, { headers: liveHeaders });
   } catch (error) {
     console.error('Error scanning member duplicates:', error);
     return NextResponse.json({ error: 'Failed to scan the member roster' }, { status: 500 });
@@ -88,16 +112,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'A valid duplicate group and decision are required' }, { status: 400 });
     }
 
-    // Very large imported duplicate groups can contain hundreds of records.
-    // Avoid putting every UUID into one PostgREST query string for those groups.
-    const loadedMembers = await loadActiveMembers(admin, memberIds.length <= 100 ? memberIds : undefined);
-    const requestedIds = new Set(memberIds);
-    const members = memberIds.length <= 100
-      ? loadedMembers
-      : loadedMembers.filter(member => requestedIds.has(member.id));
-    if (members.length !== memberIds.length) return NextResponse.json({ error: 'Some active member records could not be found' }, { status: 404 });
+    const primaryId = String(body.primaryId || '');
+    if (action === 'merge' && !memberIds.includes(primaryId)) {
+      return NextResponse.json({ error: 'Select which member record should remain primary' }, { status: 400 });
+    }
+    const members = await loadReviewedMembers(admin, memberIds);
+    const mergeState = evaluateMemberMerge(members, memberIds, primaryId);
+    const stale = () => NextResponse.json({
+      error: 'This group changed after it was loaded. The review has been refreshed; check the remaining matches.',
+      refreshRequired: true,
+    }, { status: 409, headers: liveHeaders });
+    const completed = () => NextResponse.json({
+      success: true, action, primaryId, mergedRecords: 0, alreadyMerged: true,
+      message: 'This group has already been merged successfully.',
+    }, { headers: liveHeaders });
+    if (action === 'merge' && mergeState.state === 'complete') return completed();
+    if (members.length !== memberIds.length || (action === 'merge' && mergeState.state === 'stale') ||
+      (action === 'keep_separate' && members.some(member => !member.is_active))) return stale();
     const anchor = members.find(member => member.id === anchorId)!;
-    const matches = members.filter(member => member.id !== anchorId).map(member => ({
+    const matches = members.filter(member => member.id !== anchorId && member.is_active).map(member => ({
       member,
       candidate: duplicateCandidateForPair(anchor, member),
     }));
@@ -125,15 +158,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, action, affectedRecords: memberIds.length });
     }
 
-    const primaryId = String(body.primaryId || '');
-    if (!memberIds.includes(primaryId)) {
-      return NextResponse.json({ error: 'Select which member record should remain primary' }, { status: 400 });
-    }
-    const secondaryIds = memberIds.filter(id => id !== primaryId);
+    const secondaryIds = mergeState.secondaryIds;
     const groupSummary = {
       anchorId,
       memberCount: memberIds.length,
-      matchScores: matches.map(match => match.candidate!.score),
+      minMatchScore: Math.min(...matches.map(match => match.candidate!.score)),
     };
     const { error } = await admin.rpc('merge_legacy_member_group', {
       p_primary_id: primaryId,
@@ -141,7 +170,14 @@ export async function POST(request: NextRequest) {
       p_decided_by: context.username,
       p_reason_snapshot: groupSummary,
     });
-    if (error) throw error;
+    if (error) {
+      // Another request may have committed while this request was in flight.
+      const current = await loadReviewedMembers(admin, memberIds);
+      const currentState = evaluateMemberMerge(current, memberIds, primaryId);
+      if (currentState.state === 'complete') return completed();
+      if (currentState.state === 'stale' || error.code === 'P0001') return stale();
+      throw error;
+    }
     return NextResponse.json({
       success: true,
       action,

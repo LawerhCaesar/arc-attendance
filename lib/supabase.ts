@@ -9,5 +9,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder_key'
+  supabaseAnonKey || 'placeholder_key',
+  { global: { fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }) } },
 );

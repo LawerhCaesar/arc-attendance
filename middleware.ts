@@ -58,6 +58,13 @@ async function verifySession(session: string | undefined): Promise<string | null
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // API handlers enforce their own role checks. Their live roster/attendance
+  // responses must never be replayed from a browser or shared cache after edits.
+  if (pathname.startsWith('/api/')) {
+    const response = NextResponse.next();
+    response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+    return response;
+  }
   const session = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   const role = await verifySession(session);
   const authenticated = Boolean(role);
@@ -91,5 +98,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/welfare/:path*', '/first-timers/:path*'],
+  matcher: ['/api/:path*', '/admin/:path*', '/welfare/:path*', '/first-timers/:path*'],
 };

@@ -46,7 +46,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   const fetchMembers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/members');
+      const res = await fetch('/api/members', { cache: 'no-store' });
       if (res.ok) setMembers(await res.json());
     } catch {}
     setIsLoading(false);
