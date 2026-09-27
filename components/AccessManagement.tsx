@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from './DismissibleBanner';
 
 import { useCallback, useEffect, useState } from 'react';
 import { TAB_OPTIONS, type Permission } from '@/lib/permissions';
@@ -56,7 +57,7 @@ export default function AccessManagement() {
         <p className="mt-2 text-sm text-amber-800">Public Mark Attendance remains open to everyone. Role permissions protect staff tabs and their tools; they do not make the public check-in page private.</p>
       </div>
       {error && <div role="alert" className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{error} <button onClick={() => { setError(''); load(); }} className="ml-2 underline">Retry loading</button></div>}
-      {notice && <div role="status" className="rounded-lg bg-green-50 p-4 text-sm text-green-800">{notice}</div>}
+      {notice && <DismissibleBanner onDismiss={() => setNotice('')} className="rounded-lg bg-green-50 p-4 text-sm text-green-800">{notice}</DismissibleBanner>}
       {!data ? <p className="text-sm text-gray-600">{error ? 'Accounts have not been loaded.' : 'Loading accounts and roles…'}</p> : <>
         <div className="flex flex-wrap gap-3">
           <button type="button" disabled={busy} onClick={() => { setAccount({ ...blankAccount, role_id: data.roles.find(item => item.key === 'welfare')?.id || '' }); setEditor('account'); setError(''); setNotice(''); }} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Add Account</button>

@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { dateInAccra } from '@/lib/birthdays';
 import { entryMetrics, reconcileEntryRoster } from '@/lib/entry-roster';
+import DismissibleBanner from '@/components/DismissibleBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -230,6 +231,8 @@ export default function EntryPage() {
   const [serviceSummary, setServiceSummary] = useState<{ serviceDate: string; savedPresent: number } | null>(null);
   const [summaryError, setSummaryError] = useState(false);
   const [rosterRecovery, setRosterRecovery] = useState<AttendanceEntry[]>([]);
+  const [dismissedRecovery, setDismissedRecovery] = useState('');
+  const recoveryKey = useMemo(() => rosterRecovery.map(row => row.id).sort().join('|'), [rosterRecovery]);
 
   // ── Last Sunday Edit State ──
   const [lastSundayRecords, setLastSundayRecords] = useState<LastSundayRecord[]>([]);
@@ -439,6 +442,7 @@ export default function EntryPage() {
   useEffect(() => {
     clearOldData();
     const restored = loadPersistedData();
+    try { setDismissedRecovery(sessionStorage.getItem('dismissed-roster-recovery') || ''); } catch {}
     try {
       const recovered = JSON.parse(localStorage.getItem(`arc-roster-recovery-${dateInAccra()}`) || '[]');
       if (Array.isArray(recovered)) setRosterRecovery(recovered);
@@ -892,12 +896,15 @@ export default function EntryPage() {
               </div>
 
               {message && (
-                <div className={`mb-4 p-4 rounded ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <DismissibleBanner onDismiss={() => setMessage(null)} role={message.type === 'error' ? 'alert' : 'status'} className={`mb-4 p-4 rounded ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {message.text}
-                </div>
+                </DismissibleBanner>
               )}
 
-              {rosterRecovery.length > 0 && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {rosterRecovery.length > 0 && recoveryKey !== dismissedRecovery && <DismissibleBanner dismissLabel="Dismiss recovery notice" onDismiss={() => {
+                setDismissedRecovery(recoveryKey);
+                try { sessionStorage.setItem('dismissed-roster-recovery', recoveryKey); } catch {}
+              }} className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 {rosterRecovery.length} cached roster rows no longer belong to the active roster, for example after merging. They are excluded from attendance selections. Any details from those rows can be recovered here.
                 <button type="button" className="ml-2 font-semibold underline" onClick={() => {
                   const url = URL.createObjectURL(new Blob([JSON.stringify(rosterRecovery, null, 2)], { type: 'application/json' }));
@@ -907,7 +914,11 @@ export default function EntryPage() {
                   link.click();
                   URL.revokeObjectURL(url);
                 }}>Download old draft details</button>
-              </div>}
+              </DismissibleBanner>}
+              {rosterRecovery.length > 0 && recoveryKey === dismissedRecovery && <button type="button" onClick={() => {
+                setDismissedRecovery('');
+                try { sessionStorage.removeItem('dismissed-roster-recovery'); } catch {}
+              }} className="mb-4 text-xs font-semibold text-amber-800 underline">Show saved recovery details ({rosterRecovery.length})</button>}
 
               <div className="mb-4 pb-3 border-b border-gray-300">
                 <p className="text-lg font-semibold text-gray-700">
@@ -1200,9 +1211,9 @@ export default function EntryPage() {
                   </div>
 
                   {lastSundayMessage && (
-                    <div className={`mb-3 p-3 rounded text-sm ${lastSundayMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    <DismissibleBanner onDismiss={() => setLastSundayMessage(null)} role={lastSundayMessage.type === 'error' ? 'alert' : 'status'} className={`mb-3 p-3 rounded text-sm ${lastSundayMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                       {lastSundayMessage.text}
-                    </div>
+                    </DismissibleBanner>
                   )}
 
                   <div className="mb-3">
@@ -1389,9 +1400,9 @@ export default function EntryPage() {
 
               {/* Message */}
               {clMessage && (
-                <div className={`p-4 rounded-xl ${clMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <DismissibleBanner onDismiss={() => setClMessage(null)} role={clMessage.type === 'error' ? 'alert' : 'status'} className={`p-4 rounded-xl ${clMessage.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                   {clMessage.text}
-                </div>
+                </DismissibleBanner>
               )}
 
               {/* Cell leader cards */}

@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from './DismissibleBanner';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
@@ -231,7 +232,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
     <div className="space-y-4">
       {/* Success banner */}
       {successMsg && (
-        <div className="p-3 bg-green-100 text-green-800 rounded-xl text-sm font-medium">{successMsg}</div>
+        <DismissibleBanner onDismiss={() => setSuccessMsg(null)} className="p-3 bg-green-100 text-green-800 rounded-xl text-sm font-medium">{successMsg}</DismissibleBanner>
       )}
 
       {canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
@@ -289,7 +290,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
             </h3>
 
             {formError && (
-              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{formError}</div>
+              <DismissibleBanner onDismiss={() => setFormError(null)} role="alert" className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{formError}</DismissibleBanner>
             )}
 
             {needsSignIn && <MemberEditSignIn onSignedIn={() => {
@@ -297,7 +298,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
               setFormError(null);
               setSignInNotice('Signed in. Your edits are preserved — select Save Changes to save them.');
             }} />}
-            {signInNotice && <p role="status" className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{signInNotice}</p>}
+            {signInNotice && <DismissibleBanner onDismiss={() => setSignInNotice(null)} className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{signInNotice}</DismissibleBanner>}
 
             <div className="space-y-3">
               {[

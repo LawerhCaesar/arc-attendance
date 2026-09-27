@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from '@/components/DismissibleBanner';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -63,9 +64,9 @@ export default function AdminLoginPage() {
           <p className="text-sm text-gray-500 mb-6">Access attendance tools and pastoral insights securely.</p>
           
           {error && (
-            <div className="mb-4 p-4 bg-red-100 text-red-800 rounded">
+            <DismissibleBanner onDismiss={() => setError('')} role="alert" className="mb-4 p-4 bg-red-100 text-red-800 rounded">
               {error}
-            </div>
+            </DismissibleBanner>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">

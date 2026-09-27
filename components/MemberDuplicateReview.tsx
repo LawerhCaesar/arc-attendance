@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from './DismissibleBanner';
 
 import { useCallback, useEffect, useState } from 'react';
 
@@ -135,8 +136,8 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
         <span className="shrink-0 text-sm font-semibold text-amber-900">{expanded ? 'Hide' : 'Review'}</span>
       </button>
 
-      {notice && <div role="status" className="mx-4 mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</div>}
-      {error && <div className="mx-4 mb-4 rounded-lg border border-red-200 bg-white p-3 text-sm text-red-700">{error}</div>}
+      {notice && <DismissibleBanner onDismiss={() => setNotice('')} className="mx-4 mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{notice}</DismissibleBanner>}
+      {error && <DismissibleBanner onDismiss={() => setError('')} role="alert" className="mx-4 mb-4 rounded-lg border border-red-200 bg-white p-3 text-sm text-red-700">{error}</DismissibleBanner>}
       <div className="px-4 pb-3"><button type="button" disabled={Boolean(workingGroup)} onClick={() => load(page)} className="text-xs font-semibold text-amber-900 underline disabled:opacity-50">Refresh matches</button></div>
       {expanded && (
         <div className="space-y-4 border-t border-amber-200 bg-white p-4">

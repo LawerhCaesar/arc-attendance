@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from './DismissibleBanner';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
@@ -581,9 +582,9 @@ export default function PastAttendanceEntry() {
       </div>
 
       {message && (
-        <div className={`mb-4 p-4 rounded ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+        <DismissibleBanner onDismiss={() => setMessage(null)} role={message.type === 'error' ? 'alert' : 'status'} className={`mb-4 p-4 rounded ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
           {message.text}
-        </div>
+        </DismissibleBanner>
       )}
 
       {isLoading ? (

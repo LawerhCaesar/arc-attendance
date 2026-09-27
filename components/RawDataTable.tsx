@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from './DismissibleBanner';
 
 import { useState, useEffect, useCallback } from 'react';
 import { FELLOWSHIPS } from '@/lib/fellowships';
@@ -176,9 +177,9 @@ export default function RawDataTable({ canAdminister = false }: { canAdminister?
         </div>
         
         {cleanMessage && (
-          <div className={`p-3 rounded-lg text-sm font-medium ${cleanMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+          <DismissibleBanner onDismiss={() => setCleanMessage(null)} role={cleanMessage.type === 'error' ? 'alert' : 'status'} className={`p-3 rounded-lg text-sm font-medium ${cleanMessage.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
             {cleanMessage.text}
-          </div>
+          </DismissibleBanner>
         )}
 
         <div className="flex flex-wrap gap-3">

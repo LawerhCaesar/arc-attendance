@@ -1,4 +1,5 @@
 'use client';
+import DismissibleBanner from './DismissibleBanner';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -93,7 +94,7 @@ export default function FirstTimerWorkspace() {
           Existing first timers are shown from attendance history. Apply the department migration and configure the service-role key to save progression changes.
         </div>
       )}
-      {error && <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+      {error && <DismissibleBanner onDismiss={() => setError('')} role="alert" className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">{error}</DismissibleBanner>}
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {stages.map(stage => (
