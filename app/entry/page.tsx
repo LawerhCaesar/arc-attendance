@@ -23,6 +23,7 @@ interface AttendanceEntry {
   date?: string;
   attendanceStatus?: string;
   attendanceDate?: string;
+  savedForService?: string;
 }
 
 interface LastSundayRecord {
@@ -228,7 +229,11 @@ export default function EntryPage() {
   const [isLoadingRoster, setIsLoadingRoster] = useState(false);
   const [rosterPage, setRosterPage] = useState(1);
   const [activeRosterCount, setActiveRosterCount] = useState<number | null>(null);
-  const [serviceSummary, setServiceSummary] = useState<{ serviceDate: string; savedPresent: number } | null>(null);
+  const [serviceSummary, setServiceSummary] = useState<{ serviceDate: string; savedPresent: number; presentMemberIds: string[] } | null>(null);
+  const savedMemberIds = useMemo(() => new Set(
+    serviceSummary?.serviceDate === getMostRecentSunday() ? serviceSummary.presentMemberIds || [] : []
+  ), [serviceSummary]);
+  const isEntrySaved = (entry: AttendanceEntry) => savedMemberIds.has(entry.rosterMemberId || entry.id) || entry.savedForService === getMostRecentSunday();
   const [summaryError, setSummaryError] = useState(false);
   const [rosterRecovery, setRosterRecovery] = useState<AttendanceEntry[]>([]);
   const [dismissedRecovery, setDismissedRecovery] = useState('');
@@ -309,11 +314,15 @@ export default function EntryPage() {
       const result = await res.json();
       if (requestId === summaryRequest.current) {
         setServiceSummary(result);
+        // Saved roster status is authoritative; pending picks must not count twice.
+        const savedIds = new Set<string>(result.presentMemberIds || []);
+        setMarkedPresent(previous => new Set(Array.from(previous).filter(id => !savedIds.has(id))));
+        setPresentCLIds(previous => new Set(Array.from(previous).filter(id => !savedIds.has(id))));
+        setEntries(previous => previous.map(entry => entry.rosterMemberId ? { ...entry, savedForService: undefined } : entry));
         setSummaryError(false);
       }
     } catch {
       if (requestId === summaryRequest.current) {
-        setServiceSummary(null);
         setSummaryError(true);
       }
     }
@@ -474,7 +483,10 @@ export default function EntryPage() {
 
   // ── Regular Entry Handlers ──
   const handleCellChange = (id: string, field: keyof AttendanceEntry, value: string | boolean) => {
-    setEntries(entries.map(e => e.id === id ? { ...e, [field]: value, dirty: true } : e));
+    setEntries(entries.map(e => e.id === id ? {
+      ...e, [field]: value, dirty: true,
+      savedForService: !e.rosterMemberId && ['name', 'phone', 'fellowship'].includes(field) ? undefined : e.savedForService,
+    } : e));
     setMessage(null);
   };
 
@@ -494,6 +506,8 @@ export default function EntryPage() {
   };
 
   const handleMarkPresent = (id: string) => {
+    const entry = entries.find(entry => entry.id === id);
+    if (entry && isEntrySaved(entry)) return;
     if (!entries.find(entry => entry.id === id)?.name.trim()) {
       setMessage({ type: 'error', text: 'Enter a name before selecting this person.' });
       return;
@@ -510,7 +524,7 @@ export default function EntryPage() {
     setMessage(null);
 
     const marked = entries.filter(e =>
-      markedPresent.has(e.id) && e.name.trim()
+      markedPresent.has(e.id) && e.name.trim() && !isEntrySaved(e)
     );
 
     if (marked.length === 0) {
@@ -540,12 +554,11 @@ export default function EntryPage() {
       }).map(entry => entry.id));
       const failed = marked.length - successful.size;
       setMarkedPresent(previous => new Set(Array.from(previous).filter(id => !successful.has(id))));
-      // The roster is stable after submitting. Only successfully submitted
-      // one-off drafts leave the worksheet; failed selections remain for retry.
-      setEntries(previous => previous.filter(entry => entry.rosterMemberId || !successful.has(entry.id)));
+      // Keep successful rows visible and distinguish saved attendance from picks.
+      setEntries(previous => previous.map(entry => successful.has(entry.id) ? { ...entry, savedForService: serviceDate } : entry));
       setMessage(failed
         ? { type: 'error', text: `${successful.size} saved; ${failed} failed and remain selected for retry.` }
-        : { type: 'success', text: `${successful.size} selection(s) saved. Confirmed attendance is shown separately below.` });
+        : { type: 'success', text: `${successful.size} selection(s) saved. These rows now show Present · Saved.` });
       await Promise.all([fetchSubmittedEntries(), fetchServiceSummary()]);
     } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
@@ -635,6 +648,7 @@ export default function EntryPage() {
 
   // ── Cell Leader Handlers ──
   const toggleCLPresent = (id: string) => {
+    if (savedMemberIds.has(id)) return;
     setPresentCLIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -643,7 +657,7 @@ export default function EntryPage() {
   };
 
   const markAllCLPresent = () => {
-    const visible = filteredCellLeaders.map(cl => cl.id);
+    const visible = filteredCellLeaders.filter(cl => !savedMemberIds.has(cl.id)).map(cl => cl.id);
     setPresentCLIds(prev => {
       const next = new Set(prev);
       visible.forEach(id => next.add(id));
@@ -688,14 +702,14 @@ export default function EntryPage() {
               designation: cl.designation,
               firstTimer: false,
               attendanceDate: serviceDate,
-              attendanceStatus: presentCLIds.has(cl.id) ? 'present' : 'absent',
+              attendanceStatus: presentCLIds.has(cl.id) || savedMemberIds.has(cl.id) ? 'present' : 'absent',
             }),
           })
         )
       );
 
       const failed = responses.filter(r => r.status === 'rejected' || !r.value.ok).length;
-      const presentCount = toSubmit.filter(cl => presentCLIds.has(cl.id)).length;
+      const presentCount = toSubmit.filter(cl => presentCLIds.has(cl.id) || savedMemberIds.has(cl.id)).length;
       const absentCount = toSubmit.length - presentCount;
 
       if (failed > 0) {
@@ -782,13 +796,13 @@ export default function EntryPage() {
     return matchesFellowship && matchesSearch;
   });
 
-  const clPresentCount = filteredCellLeaders.filter(cl => presentCLIds.has(cl.id)).length;
+  const clPresentCount = filteredCellLeaders.filter(cl => presentCLIds.has(cl.id) || savedMemberIds.has(cl.id)).length;
   const clAbsentCount = filteredCellLeaders.length - clPresentCount;
 
   const pastAttendanceRecords = submittedEntries.filter(
     e => e.attendanceStatus === 'present' && (e.attendanceDate || e.date) === getMostRecentSunday()
   );
-  const worksheetMetrics = entryMetrics(entries, markedPresent);
+  const worksheetMetrics = entryMetrics(entries, new Set(entries.filter(entry => markedPresent.has(entry.id) && !isEntrySaved(entry)).map(entry => entry.id)));
 
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -867,7 +881,8 @@ export default function EntryPage() {
                       Saved present for this service: <span className="font-semibold text-green-700">{serviceSummary?.serviceDate === getMostRecentSunday() ? serviceSummary.savedPresent : summaryError ? 'Unavailable' : '…'}</span>
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">Selections are unsaved until submitted. Saved attendance counts unique people across all submissions, not just this browser.</p>
+                  <p className="mt-2 text-xs text-gray-500">Green “Present · Saved” rows are already recorded for this service. Blue selections are not saved until submitted. Saved status refreshes automatically across devices.</p>
+                  {summaryError && <p role="status" className="mt-2 text-xs text-amber-800">Saved status could not be refreshed. Previously confirmed status is still shown; refresh to check for recent changes.</p>}
                   {summaryError && <button type="button" onClick={fetchServiceSummary} className="mt-1 text-xs font-semibold text-blue-700">Retry saved attendance count</button>}
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:flex-wrap">
@@ -976,11 +991,12 @@ export default function EntryPage() {
                 {visibleEntries.map(entry => {
                   const isEditing = editingId === entry.id;
                   const isPresent = markedPresent.has(entry.id);
+                  const isSaved = isEntrySaved(entry);
                   const inputCls = (editing: boolean) =>
                     `w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!editing ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`;
 
                   return (
-                    <article key={entry.id} className={`rounded-xl border p-3 shadow-sm ${isPresent ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                    <article key={entry.id} className={`rounded-xl border p-3 shadow-sm ${isSaved ? 'border-green-300 bg-green-50' : isPresent ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white'}`}>
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           {isEditing ? (
@@ -992,7 +1008,7 @@ export default function EntryPage() {
                             </>
                           )}
                         </div>
-                        {isPresent && <span className="rounded-full bg-green-600 px-2 py-1 text-xs font-semibold text-white">Present</span>}
+                        {isSaved && <span className="rounded-full bg-green-600 px-2 py-1 text-xs font-semibold text-white">Present · Saved</span>}
                       </div>
 
                       {isEditing ? (
@@ -1027,8 +1043,8 @@ export default function EntryPage() {
                         ) : (
                           <>
                             <button onClick={() => setEditingId(entry.id)} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white">Edit</button>
-                            <button onClick={() => handleMarkPresent(entry.id)} className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold ${isPresent ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
-                              {isPresent ? '✓ Present' : 'Mark Present'}
+                            <button disabled={isSaved || isSubmitting} onClick={() => handleMarkPresent(entry.id)} className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold ${isSaved ? 'bg-green-100 text-green-800' : isPresent ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                              {isSaved ? '✓ Present · Saved' : isPresent ? '✓ Selected · Not saved' : 'Mark Present'}
                             </button>
                           </>
                         )}
@@ -1056,13 +1072,15 @@ export default function EntryPage() {
                     {visibleEntries.map(entry => {
                         const isEditing = editingId === entry.id;
                         const isPresent = markedPresent.has(entry.id);
+                        const isSaved = isEntrySaved(entry);
                         const inputCls = (editing: boolean) =>
                           `w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!editing ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`;
 
                         return (
-                          <tr key={entry.id} className={`hover:bg-gray-50 ${isPresent ? 'bg-green-50' : ''}`}>
+                          <tr key={entry.id} className={isSaved ? 'bg-green-50' : isPresent ? 'bg-blue-50' : 'hover:bg-gray-50'}>
                             <td className="px-3 py-2 border-r border-gray-300">
                               <input type="text" value={entry.name} onChange={e => handleCellChange(entry.id, 'name', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Full name" />
+                              {isSaved && <span className="mt-1 inline-block text-xs font-semibold text-green-800">✓ Present · Saved</span>}
                             </td>
                             <td className="px-3 py-2 border-r border-gray-300">
                               <input type="tel" value={entry.phone} onChange={e => handleCellChange(entry.id, 'phone', e.target.value)} disabled={!isEditing} className={inputCls(isEditing)} placeholder="Phone number" />
@@ -1111,10 +1129,11 @@ export default function EntryPage() {
                                   <>
                                     <button onClick={() => setEditingId(entry.id)} className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition whitespace-nowrap min-w-[45px]">Edit</button>
                                     <button
+                                      disabled={isSaved || isSubmitting}
                                       onClick={() => handleMarkPresent(entry.id)}
-                                      className={`px-3 py-1 text-xs rounded transition whitespace-nowrap min-w-[80px] ${isPresent ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                      className={`px-3 py-1 text-xs rounded transition whitespace-nowrap min-w-[80px] ${isSaved ? 'bg-green-100 text-green-800' : isPresent ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                                     >
-                                      {isPresent ? '✓ Present' : 'Mark Present'}
+                                      {isSaved ? '✓ Present · Saved' : isPresent ? '✓ Selected · Not saved' : 'Mark Present'}
                                     </button>
                                   </>
                                 )}
@@ -1423,12 +1442,13 @@ export default function EntryPage() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {filteredCellLeaders.map(cl => {
-                    const isPresent = presentCLIds.has(cl.id);
+                    const isSaved = savedMemberIds.has(cl.id);
+                    const isPresent = presentCLIds.has(cl.id) || isSaved;
                     return (
                       <button
                         key={cl.id}
                         onClick={() => !clSubmitted && toggleCLPresent(cl.id)}
-                        disabled={clSubmitted}
+                        disabled={clSubmitted || isSaved}
                         className={`relative p-4 rounded-xl border-2 text-left transition-all duration-200 shadow-sm focus:outline-none ${
                           isPresent
                             ? 'border-green-400 bg-green-50 shadow-green-100'
@@ -1462,7 +1482,7 @@ export default function EntryPage() {
 
                         {/* Status */}
                         <div className={`mt-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${isPresent ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
-                          {isPresent ? 'Selected present' : 'Not selected'}
+                          {isSaved ? 'Present · Saved' : isPresent ? 'Selected · Not saved' : 'Not selected'}
                         </div>
                       </button>
                     );

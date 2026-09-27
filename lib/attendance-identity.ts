@@ -43,6 +43,16 @@ export function indexAttendanceByMember<T extends Pick<AttendanceRecord, 'name' 
   };
 }
 
+/** Minimal check-in status for the active roster, restricted to one service. */
+export function presentRosterMemberIds(rows: AttendanceRecord[], members: Member[], serviceDate: string): string[] {
+  const presentForMember = indexAttendanceByMember(rows.filter(row =>
+    (row.attendanceDate || row.date) === serviceDate &&
+    (!row.attendanceStatus || row.attendanceStatus === 'present')
+  ));
+  return members.filter(member => member.id && member.is_active !== false && presentForMember(member).length > 0)
+    .map(member => member.id!);
+}
+
 /** Preserve stored rows for audit while exposing one attendance per linked
  * member/service. A present entry wins over an absent duplicate.
  */

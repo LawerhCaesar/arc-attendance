@@ -1,11 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { consolidateLinkedAttendance, matchesRosterMember } from '../lib/attendance-identity';
-import type { AttendanceRecord } from '../lib/database';
+import { consolidateLinkedAttendance, matchesRosterMember, presentRosterMemberIds } from '../lib/attendance-identity';
+import type { AttendanceRecord, Member } from '../lib/database';
 
 const row = (overrides: Partial<AttendanceRecord>): AttendanceRecord => ({
   name: 'Test Member', phone: '', fellowship: 'Test', birthday: '', location: '',
   date: '2026-09-27', firstTimer: 'No', attendanceStatus: 'absent', ...overrides,
+});
+
+test('saved check-in status includes only present active roster members in the requested service', () => {
+  const members: Member[] = ['present', 'absent', 'previous', 'merged'].map(id => ({
+    id, name: id, phone: '', fellowship: 'Test', birthday: '', location: '', designation: 'Member',
+    is_active: id !== 'merged',
+  }));
+  const rows = [
+    row({ member_id: 'present', attendanceStatus: 'present' }),
+    row({ member_id: 'present', attendanceStatus: 'absent' }),
+    row({ member_id: 'absent', attendanceStatus: 'absent' }),
+    row({ member_id: 'previous', attendanceDate: '2026-09-20', attendanceStatus: 'present' }),
+    row({ member_id: 'merged', attendanceStatus: 'present' }),
+    row({ member_id: 'not-in-roster', attendanceStatus: 'present' }),
+  ];
+  assert.deepEqual(presentRosterMemberIds(rows, members, '2026-09-27'), ['present']);
+  assert.deepEqual(presentRosterMemberIds(rows, members, '2026-10-04'), []);
+});
+
+test('saved status recognizes legacy attendance without exposing visitor details', () => {
+  const member: Member = { id: 'legacy', name: 'Ama Mensah', phone: '0241111111', fellowship: 'All Grace', birthday: '', location: '', designation: 'Member' };
+  assert.deepEqual(presentRosterMemberIds([
+    row({ name: 'Mensah Ama', phone: '', fellowship: 'All Grace', attendanceStatus: '' }),
+    row({ name: 'Private Visitor', phone: '0243333333', attendanceStatus: 'present' }),
+  ], [member], '2026-09-27'), ['legacy']);
 });
 
 test('merged attendance preserves all services and present/first-visit evidence', () => {
