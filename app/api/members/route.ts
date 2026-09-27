@@ -5,18 +5,15 @@ import { getAuthContext, isAuthenticated } from '@/lib/auth';
 export async function GET(request: NextRequest) {
   try {
     const context = await getAuthContext();
-    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     const { searchParams } = new URL(request.url);
     const designation = searchParams.get('designation') || undefined;
     const requestedFellowship = searchParams.get('fellowship') || undefined;
-    const fellowship = context.role === 'fellowship_leader'
+    const fellowship = context?.role === 'fellowship_leader'
       ? context.fellowship
       : requestedFellowship;
 
-    if (context.role === 'fellowship_leader' && !fellowship) {
+    if (context?.role === 'fellowship_leader' && !fellowship) {
       return NextResponse.json({ error: 'No fellowship scope configured' }, { status: 403 });
     }
 

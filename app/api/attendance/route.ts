@@ -22,9 +22,8 @@ function snapToSunday(isoDate: string): string {
 export async function POST(request: NextRequest) {
   try {
     const context = await getAuthContext();
-    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const staffRoles = ['admin', 'pastor', 'attendance', 'fellowship_leader'];
+    const canCorrectAttendance = Boolean(context && staffRoles.includes(context.role));
 
     const body = await request.json();
     const {
@@ -72,9 +71,13 @@ export async function POST(request: NextRequest) {
     const preservedFirstTimer = firstTimer === true || firstTimer === 'true' || firstTimer === 'yes';
     const effectiveFellowship = rosterMember?.fellowship || (fellowship || '').trim();
 
-    if (context.role === 'fellowship_leader' && (!context.fellowship || effectiveFellowship !== context.fellowship)) {
+    if (context?.role === 'fellowship_leader' && (!context.fellowship || effectiveFellowship !== context.fellowship)) {
       return NextResponse.json({ error: 'Outside your fellowship scope' }, { status: 403 });
     }
+
+    // Public check-in can create current attendance, but only staff can use the
+    // correction flag to override first-timer detection or a present record.
+    const effectiveExplicitToggle = canCorrectAttendance && explicitToggle === true;
 
     const record = {
       date: new Date().toISOString().split('T')[0], // submission timestamp
@@ -83,11 +86,11 @@ export async function POST(request: NextRequest) {
       location: (location || '').trim(),
       birthday: (birthday || '').trim(),
       fellowship: effectiveFellowship,
-      firstTimer: (explicitToggle ? preservedFirstTimer : automaticallyFirstTimer) ? 'Yes' : 'No',
+      firstTimer: (effectiveExplicitToggle ? preservedFirstTimer : automaticallyFirstTimer) ? 'Yes' : 'No',
       designation: designation || 'Member',
       attendanceDate: serviceSunday,
       attendanceStatus: attendanceStatus || '',
-      explicitToggle: explicitToggle === true,
+      explicitToggle: effectiveExplicitToggle,
     };
 
     await appendAttendance(record);

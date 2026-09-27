@@ -64,7 +64,6 @@ export async function middleware(request: NextRequest) {
 
   if (
     (pathname.startsWith('/admin') && pathname !== '/admin/login') ||
-    pathname.startsWith('/entry') ||
     pathname.startsWith('/welfare') ||
     pathname.startsWith('/first-timers')
   ) {
@@ -81,7 +80,6 @@ export async function middleware(request: NextRequest) {
 
   const allowed =
     (pathname.startsWith('/admin') && ['admin', 'pastor'].includes(role!)) ||
-    (pathname.startsWith('/entry') && ['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(role!)) ||
     (pathname.startsWith('/welfare') && ['admin', 'pastor', 'welfare'].includes(role!)) ||
     (pathname.startsWith('/first-timers') && ['admin', 'pastor', 'first_timers'].includes(role!));
 
@@ -93,5 +91,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/entry/:path*', '/welfare/:path*', '/first-timers/:path*'],
+  matcher: ['/admin/:path*', '/welfare/:path*', '/first-timers/:path*'],
 };
