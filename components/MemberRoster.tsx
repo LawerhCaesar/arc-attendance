@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 import MemberDuplicateReview from '@/components/MemberDuplicateReview';
+import MemberEditSignIn from '@/components/MemberEditSignIn';
 
 interface Member {
   id: string;
@@ -38,6 +39,8 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   const [form, setForm] = useState<Omit<Member, 'id'>>(emptyForm());
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [signInNotice, setSignInNotice] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicateReviewVersion, setDuplicateReviewVersion] = useState(0);
@@ -65,6 +68,8 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   });
 
   const openAdd = () => {
+    setNeedsSignIn(false);
+    setSignInNotice(null);
     setEditingMember(null);
     setForm(emptyForm());
     setFormError(null);
@@ -72,6 +77,8 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   };
 
   const openEdit = (m: Member) => {
+    setNeedsSignIn(false);
+    setSignInNotice(null);
     setEditingMember(m);
     setForm({ name: m.name, phone: m.phone, fellowship: m.fellowship, designation: m.designation, birthday: m.birthday, location: m.location });
     setFormError(null);
@@ -90,6 +97,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
       const url = isEdit ? `/api/members/${editingMember!.id}` : '/api/members';
       const res = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
@@ -101,7 +109,13 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
         setTimeout(() => setSuccessMsg(null), 3000);
       } else {
         const d = await res.json();
-        setFormError(d.error || 'Failed to save member.');
+        if (res.status === 401 || res.status === 403) {
+          setNeedsSignIn(true);
+          setSignInNotice(null);
+          setFormError(res.status === 403 ? d.error : null);
+        } else {
+          setFormError(d.error || 'Failed to save member.');
+        }
       }
     } catch { setFormError('An error occurred.'); }
     setIsSaving(false);
@@ -269,7 +283,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
       {/* Add / Edit modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               {editingMember ? 'Edit Member' : 'Add Member to Roster'}
             </h3>
@@ -277,6 +291,13 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
             {formError && (
               <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{formError}</div>
             )}
+
+            {needsSignIn && <MemberEditSignIn onSignedIn={() => {
+              setNeedsSignIn(false);
+              setFormError(null);
+              setSignInNotice('Signed in. Your edits are preserved — select Save Changes to save them.');
+            }} />}
+            {signInNotice && <p role="status" className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{signInNotice}</p>}
 
             <div className="space-y-3">
               {[
@@ -330,7 +351,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
               </button>
               <button
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || needsSignIn}
                 className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
               >
                 {isSaving ? 'Saving…' : editingMember ? 'Save Changes' : 'Add Member'}

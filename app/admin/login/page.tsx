@@ -13,7 +13,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     // Check if already logged in
-    fetch('/api/auth/check')
+    fetch('/api/auth/check', { cache: 'no-store', credentials: 'same-origin' })
       .then(async res => {
         if (res.ok) {
           const session = await res.json();

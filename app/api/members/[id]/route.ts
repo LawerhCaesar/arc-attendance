@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateMember, deleteMember } from '@/lib/database';
-import { isAuthenticated } from '@/lib/auth';
+import { getAuthContext } from '@/lib/auth';
+
+async function checkEditAccess() {
+  const context = await getAuthContext();
+  if (!context) {
+    return NextResponse.json({ error: 'Your session has ended. Sign in again to save your changes.', code: 'SESSION_REQUIRED' }, { status: 401 });
+  }
+  if (!['admin', 'pastor'].includes(context.role)) {
+    return NextResponse.json({ error: 'Only an admin or pastor can edit the member roster.', code: 'ROLE_FORBIDDEN' }, { status: 403 });
+  }
+  return null;
+}
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authenticated = await isAuthenticated(['admin', 'pastor']);
-    if (!authenticated) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const accessError = await checkEditAccess();
+    if (accessError) return accessError;
 
     const { id } = await params;
     const body = await request.json();
@@ -47,10 +56,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authenticated = await isAuthenticated(['admin', 'pastor']);
-    if (!authenticated) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const accessError = await checkEditAccess();
+    if (accessError) return accessError;
 
     const { id } = await params;
     await deleteMember(id);

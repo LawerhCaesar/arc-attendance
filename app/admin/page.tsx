@@ -34,7 +34,7 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    fetch('/api/auth/check')
+    fetch('/api/auth/check', { cache: 'no-store', credentials: 'same-origin' })
       .then(async res => {
         if (!res.ok) {
           router.push('/admin/login');
