@@ -45,6 +45,19 @@ test('respects decisions to keep a pair separate', () => {
   assert.equal(findMemberDuplicateCandidates(members, new Set(['a:b'])).length, 0);
 });
 
+test('collapses an exact duplicate group around one canonical record', () => {
+  const members = [
+    member('a', 'Esi Owusu', '', 'Pleroma'),
+    member('b', 'Esi Owusu', '', 'Pleroma'),
+    member('c', 'Esi Owusu', '', 'Pleroma'),
+    member('d', 'Esi Owusu', '', 'Pleroma'),
+  ];
+
+  const candidates = findMemberDuplicateCandidates(members);
+  assert.equal(candidates.length, 3);
+  assert.ok(candidates.every(candidate => [candidate.memberA.id, candidate.memberB.id].includes('a')));
+});
+
 test('uses similarity rather than raw formatting', () => {
   assert.equal(contactSimilarity('020-111-2233', '+233 20 111 2233'), 1);
   assert.equal(nameSimilarity('Adwoa  Frimpong', 'frimpong, adwoa'), 1);

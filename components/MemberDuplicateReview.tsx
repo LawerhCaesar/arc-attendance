@@ -55,15 +55,21 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
   const [expanded, setExpanded] = useState(false);
   const [workingPair, setWorkingPair] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCandidates, setTotalCandidates] = useState(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetPage: number) => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/admin/member-duplicates');
+      const response = await fetch(`/api/admin/member-duplicates?page=${targetPage}&pageSize=10`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Duplicate scan failed');
       setCandidates(result.candidates || []);
+      setPage(result.page || 1);
+      setTotalPages(result.totalPages || 1);
+      setTotalCandidates(result.totalCandidates ?? (result.candidates || []).length);
       setPrimaryByPair(Object.fromEntries((result.candidates || []).map((candidate: Candidate) => [candidate.pairKey, candidate.memberA.id])));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Duplicate scan failed');
@@ -72,7 +78,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
     }
   }, []);
 
-  useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => { load(page); }, [load, page, refreshKey]);
 
   const decide = async (candidate: Candidate, action: 'keep_separate' | 'merge') => {
     if (action === 'merge' && !confirm('Merge these member records? The selected primary will remain active and the other record will be deactivated.')) return;
@@ -91,8 +97,10 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Decision could not be saved');
-      setCandidates(current => current.filter(item => item.pairKey !== candidate.pairKey));
       if (action === 'merge') await onRosterChanged();
+      const targetPage = candidates.length === 1 && page > 1 ? page - 1 : page;
+      if (targetPage !== page) setPage(targetPage);
+      else await load(targetPage);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Decision could not be saved');
     } finally {
@@ -108,7 +116,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-amber-950">Possible duplicate members</h3>
-            <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{candidates.length}</span>
+            <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{totalCandidates}</span>
           </div>
           <p className="mt-1 text-xs leading-5 text-amber-800">Review similar names with matching contacts or fellowships. No record is merged automatically.</p>
         </div>
@@ -139,6 +147,15 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
               </div>
             </article>
           ))}
+          {totalPages > 1 && (
+            <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-4 sm:flex-row">
+              <p className="text-sm text-gray-500">Page {page} of {totalPages} · {totalCandidates} unresolved pairs</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1 || isLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Previous</button>
+                <button type="button" onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages || isLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Next</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>

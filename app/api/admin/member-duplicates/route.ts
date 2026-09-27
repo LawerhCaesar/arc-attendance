@@ -23,7 +23,7 @@ async function loadActiveMembers(admin: NonNullable<ReturnType<typeof getSupabas
   return (data || []) as DuplicateMember[];
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const context = await getAuthContext();
     if (!context || context.role !== 'admin') {
@@ -41,7 +41,22 @@ export async function GET() {
     }
     const ignored = new Set((decisionsResult.data || []).map(row => duplicatePairKey(row.member_a_id, row.member_b_id)));
     const candidates = findMemberDuplicateCandidates(members, ignored);
-    return NextResponse.json({ candidates, scannedMembers: members.length });
+    const requestedPage = Number.parseInt(request.nextUrl.searchParams.get('page') || '1', 10);
+    const requestedPageSize = Number.parseInt(request.nextUrl.searchParams.get('pageSize') || '10', 10);
+    const pageSize = Math.min(25, Math.max(1, Number.isFinite(requestedPageSize) ? requestedPageSize : 10));
+    const totalCandidates = candidates.length;
+    const totalPages = Math.max(1, Math.ceil(totalCandidates / pageSize));
+    const page = Math.min(totalPages, Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1));
+    const start = (page - 1) * pageSize;
+
+    return NextResponse.json({
+      candidates: candidates.slice(start, start + pageSize),
+      totalCandidates,
+      scannedMembers: members.length,
+      page,
+      pageSize,
+      totalPages,
+    });
   } catch (error) {
     console.error('Error scanning member duplicates:', error);
     return NextResponse.json({ error: 'Failed to scan the member roster' }, { status: 500 });

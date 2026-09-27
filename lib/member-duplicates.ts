@@ -114,11 +114,44 @@ export function findMemberDuplicateCandidates(
   ignoredPairKeys: ReadonlySet<string> = new Set(),
 ): MemberDuplicateCandidate[] {
   const candidates: MemberDuplicateCandidate[] = [];
-  for (let left = 0; left < members.length; left += 1) {
-    for (let right = left + 1; right < members.length; right += 1) {
-      const pairKey = duplicatePairKey(members[left].id, members[right].id);
+  const exactGroups = new Map<string, DuplicateMember[]>();
+
+  members.forEach(member => {
+    const signature = [
+      normalizeText(member.name),
+      normalizePhone(member.phone),
+      normalizeText(member.fellowship),
+      normalizeText(member.designation),
+      normalizeText(member.birthday),
+      normalizeText(member.location),
+    ].join('|');
+    const group = exactGroups.get(signature) || [];
+    group.push(member);
+    exactGroups.set(signature, group);
+  });
+
+  const representatives: DuplicateMember[] = [];
+  exactGroups.forEach(group => {
+    const representative = group[0];
+    representatives.push(representative);
+
+    // Large repeated imports are reviewed against one canonical record. This
+    // preserves every merge decision while avoiding n² identical pairings.
+    group.slice(1).forEach(duplicate => {
+      const pairKey = duplicatePairKey(representative.id, duplicate.id);
+      if (ignoredPairKeys.has(pairKey)) return;
+      const candidate = duplicateCandidateForPair(representative, duplicate);
+      if (candidate) candidates.push(candidate);
+    });
+  });
+
+  for (let left = 0; left < representatives.length; left += 1) {
+    for (let right = left + 1; right < representatives.length; right += 1) {
+      const memberA = representatives[left];
+      const memberB = representatives[right];
+      const pairKey = duplicatePairKey(memberA.id, memberB.id);
       if (ignoredPairKeys.has(pairKey)) continue;
-      const candidate = duplicateCandidateForPair(members[left], members[right]);
+      const candidate = duplicateCandidateForPair(memberA, memberB);
       if (candidate) candidates.push(candidate);
     }
   }
