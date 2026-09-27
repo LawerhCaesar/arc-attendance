@@ -17,6 +17,7 @@ export async function GET() {
     
     data.forEach(record => {
       const date = record.attendanceDate || record.date;
+      attendanceByDate[date] ??= 0;
       if (record.attendanceStatus === 'present' || !record.attendanceStatus) {
          attendanceByDate[date] = (attendanceByDate[date] || 0) + 1;
       }
