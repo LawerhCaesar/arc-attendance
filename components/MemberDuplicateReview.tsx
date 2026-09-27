@@ -12,10 +12,12 @@ interface DuplicateMember {
   location?: string;
 }
 
-interface Candidate {
-  pairKey: string;
-  memberA: DuplicateMember;
-  memberB: DuplicateMember;
+interface DuplicateGroup {
+  groupKey: string;
+  anchor: DuplicateMember;
+  matches: DuplicateMember[];
+  memberIds: string[];
+  matchCount: number;
   confidence: 'high' | 'medium';
   score: number;
   reasons: string[];
@@ -49,28 +51,30 @@ function MemberCard({ member, selected, onSelect }: { member: DuplicateMember; s
 }
 
 export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 }: MemberDuplicateReviewProps) {
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [primaryByPair, setPrimaryByPair] = useState<Record<string, string>>({});
+  const [groups, setGroups] = useState<DuplicateGroup[]>([]);
+  const [primaryByGroup, setPrimaryByGroup] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  const [workingPair, setWorkingPair] = useState<string | null>(null);
+  const [workingGroup, setWorkingGroup] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCandidates, setTotalCandidates] = useState(0);
+  const [totalGroups, setTotalGroups] = useState(0);
 
   const load = useCallback(async (targetPage: number) => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/admin/member-duplicates?page=${targetPage}&pageSize=10`);
+      const response = await fetch(`/api/admin/member-duplicates?page=${targetPage}&pageSize=5`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Duplicate scan failed');
-      setCandidates(result.candidates || []);
+      setGroups(result.groups || []);
       setPage(result.page || 1);
       setTotalPages(result.totalPages || 1);
-      setTotalCandidates(result.totalCandidates ?? (result.candidates || []).length);
-      setPrimaryByPair(Object.fromEntries((result.candidates || []).map((candidate: Candidate) => [candidate.pairKey, candidate.memberA.id])));
+      setTotalCandidates(result.totalCandidates || 0);
+      setTotalGroups(result.totalGroups || 0);
+      setPrimaryByGroup(Object.fromEntries((result.groups || []).map((group: DuplicateGroup) => [group.groupKey, group.anchor.id])));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Duplicate scan failed');
     } finally {
@@ -80,9 +84,9 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
 
   useEffect(() => { load(page); }, [load, page, refreshKey]);
 
-  const decide = async (candidate: Candidate, action: 'keep_separate' | 'merge') => {
-    if (action === 'merge' && !confirm('Merge these member records? The selected primary will remain active and the other record will be deactivated.')) return;
-    setWorkingPair(candidate.pairKey);
+  const decide = async (group: DuplicateGroup, action: 'keep_separate' | 'merge') => {
+    if (action === 'merge' && !confirm(`Merge ${group.matchCount} matching record(s) into the selected primary? Existing values will be preserved and empty fields will be filled from the other records.`)) return;
+    setWorkingGroup(group.groupKey);
     setError('');
     try {
       const response = await fetch('/api/admin/member-duplicates', {
@@ -90,21 +94,21 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
-          memberAId: candidate.memberA.id,
-          memberBId: candidate.memberB.id,
-          primaryId: primaryByPair[candidate.pairKey],
+          anchorId: group.anchor.id,
+          memberIds: group.memberIds,
+          primaryId: primaryByGroup[group.groupKey],
         }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Decision could not be saved');
       if (action === 'merge') await onRosterChanged();
-      const targetPage = candidates.length === 1 && page > 1 ? page - 1 : page;
+      const targetPage = groups.length === 1 && page > 1 ? page - 1 : page;
       if (targetPage !== page) setPage(targetPage);
       else await load(targetPage);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Decision could not be saved');
     } finally {
-      setWorkingPair(null);
+      setWorkingGroup(null);
     }
   };
 
@@ -116,9 +120,9 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-amber-950">Possible duplicate members</h3>
-            <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{totalCandidates}</span>
+            <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{totalGroups}</span>
           </div>
-          <p className="mt-1 text-xs leading-5 text-amber-800">Review similar names with matching contacts or fellowships. No record is merged automatically.</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">Each primary record is grouped with all related matches. No record is merged automatically.</p>
         </div>
         <span className="shrink-0 text-sm font-semibold text-amber-900">{expanded ? 'Hide' : 'Review'}</span>
       </button>
@@ -126,30 +130,42 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
       {error && <div className="mx-4 mb-4 rounded-lg border border-red-200 bg-white p-3 text-sm text-red-700">{error}</div>}
       {expanded && (
         <div className="space-y-4 border-t border-amber-200 bg-white p-4">
-          {candidates.length === 0 ? (
-            <div className="py-6 text-center text-sm text-gray-500">No unresolved duplicate candidates.</div>
-          ) : candidates.map(candidate => (
-            <article key={candidate.pairKey} className="rounded-xl border border-gray-200 p-4">
+          {groups.length === 0 ? (
+            <div className="py-6 text-center text-sm text-gray-500">No unresolved duplicate groups.</div>
+          ) : groups.map(group => (
+            <article key={group.groupKey} className="rounded-xl border border-gray-200 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${candidate.confidence === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>{candidate.confidence} confidence</span>
-                  <span className="text-xs font-semibold text-gray-500">Match score {candidate.score}%</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${group.confidence === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>{group.confidence} confidence</span>
+                  <span className="text-xs font-semibold text-gray-500">Up to {group.score}% match</span>
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">{group.matchCount} possible match{group.matchCount === 1 ? '' : 'es'}</span>
                 </div>
-                <p className="text-xs text-gray-500">{candidate.reasons.join(' · ')}</p>
+                <p className="text-xs text-gray-500">{group.reasons.slice(0, 3).join(' · ')}</p>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <MemberCard member={candidate.memberA} selected={primaryByPair[candidate.pairKey] === candidate.memberA.id} onSelect={() => setPrimaryByPair(current => ({ ...current, [candidate.pairKey]: candidate.memberA.id }))} />
-                <MemberCard member={candidate.memberB} selected={primaryByPair[candidate.pairKey] === candidate.memberB.id} onSelect={() => setPrimaryByPair(current => ({ ...current, [candidate.pairKey]: candidate.memberB.id }))} />
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Primary record</p>
+                <MemberCard member={group.anchor} selected={primaryByGroup[group.groupKey] === group.anchor.id} onSelect={() => setPrimaryByGroup(current => ({ ...current, [group.groupKey]: group.anchor.id }))} />
+              </div>
+              <div className="mt-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Possible matches</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {group.matches.map(member => (
+                    <MemberCard key={member.id} member={member} selected={primaryByGroup[group.groupKey] === member.id} onSelect={() => setPrimaryByGroup(current => ({ ...current, [group.groupKey]: member.id }))} />
+                  ))}
+                </div>
+                {group.matchCount > group.matches.length && (
+                  <p className="mt-3 rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-600">+ {group.matchCount - group.matches.length} more matching record(s) included in this group</p>
+                )}
               </div>
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" disabled={workingPair === candidate.pairKey} onClick={() => decide(candidate, 'keep_separate')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Keep both separate</button>
-                <button type="button" disabled={workingPair === candidate.pairKey} onClick={() => decide(candidate, 'merge')} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{workingPair === candidate.pairKey ? 'Saving…' : 'Merge into selected primary'}</button>
+                <button type="button" disabled={workingGroup === group.groupKey} onClick={() => decide(group, 'keep_separate')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Keep group separate</button>
+                <button type="button" disabled={workingGroup === group.groupKey} onClick={() => decide(group, 'merge')} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{workingGroup === group.groupKey ? 'Merging group…' : `Merge all ${group.matchCount} into selected primary`}</button>
               </div>
             </article>
           ))}
           {totalPages > 1 && (
             <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-100 pt-4 sm:flex-row">
-              <p className="text-sm text-gray-500">Page {page} of {totalPages} · {totalCandidates} unresolved pairs</p>
+              <p className="text-sm text-gray-500">Page {page} of {totalPages} · {totalGroups} groups · {totalCandidates} related records</p>
               <div className="flex gap-2">
                 <button type="button" onClick={() => setPage(current => Math.max(1, current - 1))} disabled={page === 1 || isLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Previous</button>
                 <button type="button" onClick={() => setPage(current => Math.min(totalPages, current + 1))} disabled={page === totalPages || isLoading} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40">Next</button>

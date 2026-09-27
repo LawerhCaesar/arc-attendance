@@ -18,6 +18,17 @@ export interface MemberDuplicateCandidate {
   reasons: string[];
 }
 
+export interface MemberDuplicateGroup {
+  groupKey: string;
+  anchor: DuplicateMember;
+  matches: DuplicateMember[];
+  memberIds: string[];
+  matchCount: number;
+  confidence: 'high' | 'medium';
+  score: number;
+  reasons: string[];
+}
+
 const normalizeText = (value?: string) => (value || '')
   .normalize('NFKD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -156,4 +167,49 @@ export function findMemberDuplicateCandidates(
     }
   }
   return candidates.sort((a, b) => b.score - a.score || a.memberA.name.localeCompare(b.memberA.name));
+}
+
+/** Groups pair evidence into one anchor record with all of its possible matches. */
+export function groupMemberDuplicateCandidates(
+  candidates: MemberDuplicateCandidate[],
+): MemberDuplicateGroup[] {
+  const groups = new Map<string, {
+    anchor: DuplicateMember;
+    matches: Map<string, DuplicateMember>;
+    confidence: 'high' | 'medium';
+    score: number;
+    reasons: Set<string>;
+  }>();
+
+  candidates.forEach(candidate => {
+    const key = candidate.memberA.id;
+    const group = groups.get(key) || {
+      anchor: candidate.memberA,
+      matches: new Map<string, DuplicateMember>(),
+      confidence: 'medium' as const,
+      score: 0,
+      reasons: new Set<string>(),
+    };
+    group.matches.set(candidate.memberB.id, candidate.memberB);
+    if (candidate.confidence === 'high') group.confidence = 'high';
+    group.score = Math.max(group.score, candidate.score);
+    candidate.reasons.forEach(reason => group.reasons.add(reason));
+    groups.set(key, group);
+  });
+
+  return Array.from(groups.entries())
+    .map(([groupKey, group]) => {
+      const matches = Array.from(group.matches.values());
+      return {
+        groupKey,
+        anchor: group.anchor,
+        matches,
+        memberIds: [group.anchor.id, ...matches.map(member => member.id)],
+        matchCount: matches.length,
+        confidence: group.confidence,
+        score: group.score,
+        reasons: Array.from(group.reasons),
+      };
+    })
+    .sort((a, b) => b.matchCount - a.matchCount || b.score - a.score || a.anchor.name.localeCompare(b.anchor.name));
 }

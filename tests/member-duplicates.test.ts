@@ -4,6 +4,7 @@ import {
   contactSimilarity,
   duplicateCandidateForPair,
   findMemberDuplicateCandidates,
+  groupMemberDuplicateCandidates,
   nameSimilarity,
 } from '../lib/member-duplicates';
 
@@ -56,6 +57,21 @@ test('collapses an exact duplicate group around one canonical record', () => {
   const candidates = findMemberDuplicateCandidates(members);
   assert.equal(candidates.length, 3);
   assert.ok(candidates.every(candidate => [candidate.memberA.id, candidate.memberB.id].includes('a')));
+});
+
+test('groups one canonical record with all of its possible matches', () => {
+  const members = [
+    member('a', 'Esi Owusu', '', 'Pleroma'),
+    member('b', 'Esi Owusu', '', 'Pleroma'),
+    member('c', 'Esi Owusu', '', 'Pleroma'),
+    member('d', 'Esi Owusu', '', 'Pleroma'),
+  ];
+
+  const groups = groupMemberDuplicateCandidates(findMemberDuplicateCandidates(members));
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].anchor.id, 'a');
+  assert.equal(groups[0].matchCount, 3);
+  assert.deepEqual(groups[0].memberIds, ['a', 'b', 'c', 'd']);
 });
 
 test('uses similarity rather than raw formatting', () => {

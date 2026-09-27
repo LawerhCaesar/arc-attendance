@@ -4,6 +4,7 @@ import {
   duplicateCandidateForPair,
   duplicatePairKey,
   findMemberDuplicateCandidates,
+  groupMemberDuplicateCandidates,
   type DuplicateMember,
 } from '@/lib/member-duplicates';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -41,17 +42,24 @@ export async function GET(request: NextRequest) {
     }
     const ignored = new Set((decisionsResult.data || []).map(row => duplicatePairKey(row.member_a_id, row.member_b_id)));
     const candidates = findMemberDuplicateCandidates(members, ignored);
+    const groups = groupMemberDuplicateCandidates(candidates);
     const requestedPage = Number.parseInt(request.nextUrl.searchParams.get('page') || '1', 10);
-    const requestedPageSize = Number.parseInt(request.nextUrl.searchParams.get('pageSize') || '10', 10);
-    const pageSize = Math.min(25, Math.max(1, Number.isFinite(requestedPageSize) ? requestedPageSize : 10));
+    const requestedPageSize = Number.parseInt(request.nextUrl.searchParams.get('pageSize') || '5', 10);
+    const pageSize = Math.min(10, Math.max(1, Number.isFinite(requestedPageSize) ? requestedPageSize : 5));
     const totalCandidates = candidates.length;
-    const totalPages = Math.max(1, Math.ceil(totalCandidates / pageSize));
+    const totalGroups = groups.length;
+    const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
     const page = Math.min(totalPages, Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1));
     const start = (page - 1) * pageSize;
+    const pageGroups = groups.slice(start, start + pageSize).map(group => ({
+      ...group,
+      matches: group.matches.slice(0, 20),
+    }));
 
     return NextResponse.json({
-      candidates: candidates.slice(start, start + pageSize),
+      groups: pageGroups,
       totalCandidates,
+      totalGroups,
       scannedMembers: members.length,
       page,
       pageSize,
@@ -74,47 +82,75 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const action = body.action as 'keep_separate' | 'merge';
-    const memberAId = String(body.memberAId || '');
-    const memberBId = String(body.memberBId || '');
-    if (!['keep_separate', 'merge'].includes(action) || !memberAId || !memberBId || memberAId === memberBId) {
-      return NextResponse.json({ error: 'Two different members and a valid decision are required' }, { status: 400 });
+    const fallbackIds = [body.memberAId, body.memberBId].filter(Boolean);
+    const memberIds: string[] = Array.from(new Set<string>(
+      (Array.isArray(body.memberIds) ? body.memberIds : fallbackIds).map((id: unknown) => String(id || '')).filter(Boolean),
+    ));
+    const anchorId = String(body.anchorId || body.memberAId || '');
+    if (!['keep_separate', 'merge'].includes(action) || memberIds.length < 2 || !anchorId || !memberIds.includes(anchorId)) {
+      return NextResponse.json({ error: 'A valid duplicate group and decision are required' }, { status: 400 });
     }
 
-    const members = await loadActiveMembers(admin, [memberAId, memberBId]);
-    if (members.length !== 2) return NextResponse.json({ error: 'Both active members could not be found' }, { status: 404 });
-    const memberA = members.find(member => member.id === memberAId)!;
-    const memberB = members.find(member => member.id === memberBId)!;
-    const candidate = duplicateCandidateForPair(memberA, memberB);
-    if (!candidate) return NextResponse.json({ error: 'These records no longer meet the duplicate-review threshold' }, { status: 409 });
-    const [orderedA, orderedB] = orderedIds(memberAId, memberBId);
+    // Very large imported duplicate groups can contain hundreds of records.
+    // Avoid putting every UUID into one PostgREST query string for those groups.
+    const loadedMembers = await loadActiveMembers(admin, memberIds.length <= 100 ? memberIds : undefined);
+    const requestedIds = new Set(memberIds);
+    const members = memberIds.length <= 100
+      ? loadedMembers
+      : loadedMembers.filter(member => requestedIds.has(member.id));
+    if (members.length !== memberIds.length) return NextResponse.json({ error: 'Some active member records could not be found' }, { status: 404 });
+    const anchor = members.find(member => member.id === anchorId)!;
+    const matches = members.filter(member => member.id !== anchorId).map(member => ({
+      member,
+      candidate: duplicateCandidateForPair(anchor, member),
+    }));
+    if (matches.some(match => !match.candidate)) {
+      return NextResponse.json({ error: 'Some records no longer meet the duplicate-review threshold' }, { status: 409 });
+    }
 
     if (action === 'keep_separate') {
-      const { error } = await admin.from('member_duplicate_decisions').upsert({
-        member_a_id: orderedA,
-        member_b_id: orderedB,
-        decision: 'keep_separate',
-        primary_member_id: null,
-        decided_by: context.username,
-        reason_snapshot: candidate,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'member_a_id,member_b_id' });
+      const decisions = matches.map(({ member, candidate }) => {
+        const [memberAId, memberBId] = orderedIds(anchorId, member.id);
+        return {
+          member_a_id: memberAId,
+          member_b_id: memberBId,
+          decision: 'keep_separate',
+          primary_member_id: null,
+          decided_by: context.username,
+          reason_snapshot: candidate,
+          updated_at: new Date().toISOString(),
+        };
+      });
+      const { error } = await admin.from('member_duplicate_decisions').upsert(decisions, {
+        onConflict: 'member_a_id,member_b_id',
+      });
       if (error) throw error;
-      return NextResponse.json({ success: true, action });
+      return NextResponse.json({ success: true, action, affectedRecords: memberIds.length });
     }
 
     const primaryId = String(body.primaryId || '');
-    if (![memberAId, memberBId].includes(primaryId)) {
+    if (!memberIds.includes(primaryId)) {
       return NextResponse.json({ error: 'Select which member record should remain primary' }, { status: 400 });
     }
-    const secondaryId = primaryId === memberAId ? memberBId : memberAId;
-    const { error } = await admin.rpc('merge_legacy_members', {
+    const secondaryIds = memberIds.filter(id => id !== primaryId);
+    const groupSummary = {
+      anchorId,
+      memberCount: memberIds.length,
+      matchScores: matches.map(match => match.candidate!.score),
+    };
+    const { error } = await admin.rpc('merge_legacy_member_group', {
       p_primary_id: primaryId,
-      p_secondary_id: secondaryId,
+      p_secondary_ids: secondaryIds,
       p_decided_by: context.username,
-      p_reason_snapshot: candidate,
+      p_reason_snapshot: groupSummary,
     });
     if (error) throw error;
-    return NextResponse.json({ success: true, action, primaryId, secondaryId });
+    return NextResponse.json({
+      success: true,
+      action,
+      primaryId,
+      mergedRecords: secondaryIds.length,
+    });
   } catch (error) {
     console.error('Error resolving member duplicates:', error);
     return NextResponse.json({ error: 'Failed to save the duplicate decision' }, { status: 500 });
