@@ -8,6 +8,7 @@ import {
   type DuplicateMember,
 } from '@/lib/member-duplicates';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { fetchAllRows } from '@/lib/pagination';
 
 function orderedIds(left: string, right: string): [string, string] {
   return left.localeCompare(right) <= 0 ? [left, right] : [right, left];
@@ -19,9 +20,7 @@ async function loadActiveMembers(admin: NonNullable<ReturnType<typeof getSupabas
     .select('id, name, phone, fellowship, designation, birthday, location, created_at')
     .eq('is_active', true);
   if (ids) query = query.in('id', ids);
-  const { data, error } = await query.order('name');
-  if (error) throw error;
-  return (data || []) as DuplicateMember[];
+  return fetchAllRows<DuplicateMember>((from, to) => query.order('name').order('id').range(from, to));
 }
 
 export async function GET(request: NextRequest) {
@@ -33,14 +32,12 @@ export async function GET(request: NextRequest) {
     const admin = getSupabaseAdmin();
     if (!admin) return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required' }, { status: 503 });
 
-    const [members, decisionsResult] = await Promise.all([
+    const [members, decisions] = await Promise.all([
       loadActiveMembers(admin),
-      admin.from('member_duplicate_decisions').select('member_a_id, member_b_id'),
+      fetchAllRows<{ member_a_id: string; member_b_id: string }>((from, to) => admin
+        .from('member_duplicate_decisions').select('member_a_id, member_b_id').order('id').range(from, to)),
     ]);
-    if (decisionsResult.error) {
-      return NextResponse.json({ error: 'Apply the member duplicate review migration first' }, { status: 503 });
-    }
-    const ignored = new Set((decisionsResult.data || []).map(row => duplicatePairKey(row.member_a_id, row.member_b_id)));
+    const ignored = new Set(decisions.map(row => duplicatePairKey(row.member_a_id, row.member_b_id)));
     const candidates = findMemberDuplicateCandidates(members, ignored);
     const groups = groupMemberDuplicateCandidates(candidates);
     const requestedPage = Number.parseInt(request.nextUrl.searchParams.get('page') || '1', 10);

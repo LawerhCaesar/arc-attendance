@@ -80,8 +80,9 @@ export async function POST(request: NextRequest) {
     const effectiveExplicitToggle = canCorrectAttendance && explicitToggle === true;
 
     const record = {
+      member_id: rosterMember?.id || null,
       date: new Date().toISOString().split('T')[0], // submission timestamp
-      name: name.trim(),
+      name: rosterMember?.name || name.trim(),
       phone: (rosterMember?.phone || phone || '').trim(),
       location: (location || '').trim(),
       birthday: (birthday || '').trim(),
@@ -130,6 +131,7 @@ export async function GET() {
 
     const entries = data.map((record, index) => ({
       id: `record-${index}-${record.date}`,
+      member_id: record.member_id,
       date: record.date,
       name: record.name,
       phone: record.phone,

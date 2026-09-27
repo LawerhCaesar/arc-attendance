@@ -1,4 +1,5 @@
 import type { AttendanceRecord, Member } from './database';
+import { indexAttendanceByMember, normalizePhone } from './attendance-identity';
 
 export interface CarePerson {
   id?: string;
@@ -56,20 +57,13 @@ const isFirstTimer = (record: AttendanceRecord) =>
   ['yes', 'true', '1'].includes(String(record.firstTimer || '').trim().toLowerCase());
 
 const normalize = (value?: string) => (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-const phoneDigits = (value?: string) => (value || '').replace(/\D/g, '');
+const phoneDigits = normalizePhone;
 
 function personKey(person: Pick<Member, 'name' | 'phone' | 'fellowship'> | AttendanceRecord): string {
+  if ('member_id' in person && person.member_id) return `member:${person.member_id}`;
   const phone = phoneDigits(person.phone);
   if (phone.length >= 7) return `phone:${phone}`;
   return `name:${normalize(person.name)}|${normalize(person.fellowship)}`;
-}
-
-function matchesMember(record: AttendanceRecord, member: Member): boolean {
-  const memberPhone = phoneDigits(member.phone);
-  const recordPhone = phoneDigits(record.phone);
-  if (memberPhone.length >= 7 && recordPhone.length >= 7) return memberPhone === recordPhone;
-  return normalize(record.name) === normalize(member.name) &&
-    normalize(record.fellowship) === normalize(member.fellowship);
 }
 
 function daysBetween(from: string, to: string): number {
@@ -108,6 +102,7 @@ export function buildPastoralDashboard(
   members: Member[],
   now = new Date()
 ): PastoralDashboardData {
+  const attendanceForMember = indexAttendanceByMember(attendance);
   const dates = Array.from(new Set(attendance.map(serviceDate).filter(Boolean))).sort();
   const latestDate = dates.at(-1) || null;
   const previousDate = dates.at(-2) || null;
@@ -146,11 +141,11 @@ export function buildPastoralDashboard(
   }).length;
 
   const presentMemberCount = members.filter(member =>
-    latestRecords.some(record => isPresent(record) && matchesMember(record, member))
+    attendanceForMember(member).some(record => serviceDate(record) === latestDate && isPresent(record))
   ).length;
 
   const absentMembers = members.flatMap(member => {
-    const memberRecords = attendance.filter(record => matchesMember(record, member));
+    const memberRecords = attendanceForMember(member);
     const firstKnownDate = member.created_at?.slice(0, 10) ||
       memberRecords.map(serviceDate).filter(Boolean).sort()[0];
     if (!firstKnownDate) return [];
@@ -160,10 +155,9 @@ export function buildPastoralDashboard(
     let lastSeen: string | null = null;
 
     for (const date of eligibleDates) {
-      const record = memberRecords.find(item => serviceDate(item) === date);
-      if (record && isPresent(record)) {
+      const present = memberRecords.some(item => serviceDate(item) === date && isPresent(item));
+      if (present) {
         lastSeen ||= date;
-        if (consecutiveAbsences === 0) continue;
         break;
       }
       consecutiveAbsences += 1;
@@ -218,11 +212,10 @@ export function buildPastoralDashboard(
   const fellowships = fellowshipNames.map(name => {
     const fellowshipMembers = members.filter(member => (member.fellowship || 'Unassigned') === name);
     const latestCount = fellowshipMembers.filter(member =>
-      latestRecords.some(record => isPresent(record) && matchesMember(record, member))
+      attendanceForMember(member).some(record => serviceDate(record) === latestDate && isPresent(record))
     ).length;
-    const previousRecords = previousDate ? recordsByDate.get(previousDate) || [] : [];
     const previousCount = fellowshipMembers.filter(member =>
-      previousRecords.some(record => isPresent(record) && matchesMember(record, member))
+      attendanceForMember(member).some(record => serviceDate(record) === previousDate && isPresent(record))
     ).length;
     return {
       name,

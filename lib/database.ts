@@ -1,8 +1,11 @@
 import { supabase } from './supabase';
 import { matchFellowship } from './fellowships';
+import { fetchAllRows } from './pagination';
+import { consolidateLinkedAttendance, matchesRosterMember, normalizePhone } from './attendance-identity';
 
 export interface AttendanceRecord {
   id?: string;
+  member_id?: string | null;
   date: string;
   name: string;
   phone: string;
@@ -26,6 +29,7 @@ export interface Member {
   birthday: string;
   location: string;
   is_active?: boolean;
+  merged_into_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -59,25 +63,29 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
   let existingQuery = supabase
     .from(TABLE_NAME)
     .select('id, attendanceStatus')
-    .eq(dateField, targetDate)
-    .limit(1);
+    .eq(dateField, targetDate);
 
-  existingQuery = record.phone?.trim()
+  existingQuery = record.member_id
+    ? existingQuery.eq('member_id', record.member_id)
+    : record.phone?.trim()
     ? existingQuery.eq('phone', record.phone.trim())
     : existingQuery.ilike('name', record.name).eq('fellowship', matchFellowship(record.fellowship));
 
-  const { data: existing, error: fetchError } = await existingQuery;
-
-  if (fetchError) {
-    throw new Error(`Failed to check existing record: ${fetchError.message}`);
+  let existing = await fetchAllRows<{ id: string; attendanceStatus: string }>(
+    (from, to) => existingQuery.order('id').range(from, to),
+  );
+  if (record.member_id && existing.length === 0) {
+    // Reuse pre-migration entries on this service before inserting a linked row.
+    const legacy = await fetchAllRows<AttendanceRecord>((from, to) => supabase.from(TABLE_NAME)
+      .select('*').is('member_id', null).eq(dateField, targetDate).order('id').range(from, to));
+    existing = legacy.filter(row => matchesRosterMember(row, { ...record, id: record.member_id || undefined }))
+      .map(row => ({ id: row.id!, attendanceStatus: row.attendanceStatus || '' }));
   }
 
   if (existing && existing.length > 0) {
-    const existingRecord = existing[0];
-
     // Prevent overwriting a "present" status with "absent" unless explicitly requested
     if (
-      existingRecord.attendanceStatus === 'present' &&
+      existing.some(item => item.attendanceStatus === 'present' || !item.attendanceStatus) &&
       attendanceRecord.attendanceStatus === 'absent' &&
       !record.explicitToggle
     ) {
@@ -86,13 +94,10 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
 
     // Update existing record
     const { createdAt, explicitToggle, ...updatePayload } = attendanceRecord;
-    const { error: updateError } = await supabase
-      .from(TABLE_NAME)
-      .update(updatePayload)
-      .eq('id', existingRecord.id);
-
-    if (updateError) {
-      throw new Error(`Failed to update record: ${updateError.message}`);
+    for (let start = 0; start < existing.length; start += 100) {
+      const { error: updateError } = await supabase.from(TABLE_NAME).update(updatePayload)
+        .in('id', existing.slice(start, start + 100).map(row => row.id));
+      if (updateError) throw new Error(`Failed to update record: ${updateError.message}`);
     }
   } else {
     // Insert new
@@ -109,17 +114,13 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
 
 /** Get all attendance records from the database */
 export async function getAttendanceData(): Promise<AttendanceRecord[]> {
-  const { data, error } = await supabase
+  const data = await fetchAllRows<AttendanceRecord>((from, to) => supabase
     .from(TABLE_NAME)
     .select('*')
     .order('date', { ascending: false })
-    .order('createdAt', { ascending: false });
+    .order('createdAt', { ascending: false }).order('id').range(from, to));
 
-  if (error) {
-    throw new Error(`Failed to fetch records: ${error.message}`);
-  }
-
-  return (data || []).map(record => ({
+  return consolidateLinkedAttendance(data).map(record => ({
     ...record,
     designation: record.designation || 'Member',
     createdAt: record.createdAt ? new Date(record.createdAt) : undefined,
@@ -135,18 +136,14 @@ export async function getAttendanceByDateRange(
     .from(TABLE_NAME)
     .select('*')
     .order('date', { ascending: false })
-    .order('createdAt', { ascending: false });
+    .order('createdAt', { ascending: false }).order('id');
 
   if (startDate) query = query.gte('date', startDate);
   if (endDate) query = query.lte('date', endDate);
 
-  const { data, error } = await query;
+  const data = await fetchAllRows<AttendanceRecord>((from, to) => query.range(from, to));
 
-  if (error) {
-    throw new Error(`Failed to fetch records by date range: ${error.message}`);
-  }
-
-  return (data || []).map(record => ({
+  return consolidateLinkedAttendance(data).map(record => ({
     ...record,
     designation: record.designation || 'Member',
     createdAt: record.createdAt ? new Date(record.createdAt) : undefined,
@@ -165,7 +162,7 @@ export async function getMembers(
     .select('*')
     .eq('is_active', true)
     .order('fellowship')
-    .order('name');
+    .order('name').order('id');
 
   if (designation) {
     if (designation.includes(',')) {
@@ -177,17 +174,10 @@ export async function getMembers(
   }
   if (fellowship) query = query.eq('fellowship', fellowship);
 
-  const { data, error } = await query;
-
-  if (error) {
-    throw new Error(`Failed to fetch members: ${error.message}`);
-  }
-
-  return data || [];
+  return fetchAllRows<Member>((from, to) => query.range(from, to));
 }
 
-const normalizedPhone = (value?: string) => (value || '').replace(/\D/g, '');
-const normalizedText = (value?: string) => (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const normalizedPhone = normalizePhone;
 
 /** Find an active roster member using phone first, then name and fellowship. */
 export async function findRosterMember(
@@ -206,23 +196,23 @@ export async function findRosterMember(
     if (exactPhone?.[0]) return exactPhone[0] as Member;
   }
 
-  // Legacy phone values are not normalized, so compare a bounded active roster
+  // Legacy phone values are not normalized, so compare the complete active roster
   // locally after the fast exact-phone lookup. This catches spaces, dashes and
   // country-code formatting differences before falling back to name/fellowship.
-  const { data: candidates, error: rosterError } = await supabase
-    .from(MEMBERS_TABLE)
-    .select('*')
-    .eq('is_active', true)
-    .limit(2000);
-  if (rosterError) throw new Error(`Failed to check member roster: ${rosterError.message}`);
+  const candidates = await getMembers();
 
   const match = (candidates || []).find(candidate => {
     const candidatePhone = normalizedPhone(candidate.phone);
-    if (phone && candidatePhone) return phone === candidatePhone;
-    return normalizedText(candidate.name) === normalizedText(person.name) &&
-      normalizedText(candidate.fellowship) === normalizedText(person.fellowship);
+    if (phone && candidatePhone && phone === candidatePhone) return true;
+    return matchesRosterMember(person, candidate);
   });
-  return (match as Member | undefined) || null;
+  if (match) return match;
+
+  // Old names/contacts remain valid aliases after an admin-approved merge.
+  const aliases = await fetchAllRows<Member>((from, to) => supabase.from(MEMBERS_TABLE)
+    .select('*').not('merged_into_id', 'is', null).order('id').range(from, to));
+  const alias = aliases.find(candidate => matchesRosterMember(person, candidate));
+  return candidates.find(candidate => candidate.id === alias?.merged_into_id) || null;
 }
 
 export async function createMember(
@@ -268,13 +258,8 @@ export async function syncMemberFromAttendance(record: AttendanceRecord, memberI
   let existing: { id: string } | undefined;
   const recordPhone = normalizedPhone(record.phone);
   if (recordPhone) {
-    const { data: candidates, error } = await supabase
-      .from(MEMBERS_TABLE)
-      .select('id, phone')
-      .eq('is_active', true)
-      .limit(2000);
-    if (error) throw new Error(`Failed to check roster phone: ${error.message}`);
-    existing = (candidates || []).find(candidate => normalizedPhone(candidate.phone) === recordPhone);
+    const candidates = await getMembers();
+    existing = candidates.find(candidate => normalizedPhone(candidate.phone) === recordPhone) as { id: string } | undefined;
   }
 
   if (!existing) {

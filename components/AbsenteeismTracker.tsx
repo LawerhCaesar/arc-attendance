@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { indexAttendanceByMember } from '@/lib/attendance-identity';
 
 // Definitions
 interface Member {
@@ -11,7 +12,10 @@ interface Member {
 }
 
 interface AttendanceRecord {
+  member_id?: string;
   name: string;
+  phone: string;
+  fellowship: string;
   attendanceDate: string; // ISO date YYYY-MM-DD
   attendanceStatus: string; // 'present' | 'absent'
 }
@@ -87,12 +91,13 @@ export default function AbsenteeismTracker() {
 
   const trackerData = useMemo(() => {
     const data: TrackerRow[] = [];
+    const attendanceForMember = indexAttendanceByMember(records);
     const todayStr = new Date().toISOString().split('T')[0];
     const referenceDateStr = serviceDates.length > 0 ? serviceDates[serviceDates.length - 1] : todayStr;
 
     members.forEach(member => {
       // Find all records for this member
-      const memberRecords = records.filter(r => r.name.toLowerCase() === member.name.toLowerCase());
+      const memberRecords = attendanceForMember(member);
       
       let totalAbsences = 0;
       let monthlyAbsences = 0;
@@ -104,8 +109,7 @@ export default function AbsenteeismTracker() {
       const sortedDates = [...serviceDates].reverse();
 
       sortedDates.forEach(date => {
-        const record = memberRecords.find(r => r.attendanceDate === date);
-        const isPresent = record?.attendanceStatus === 'present';
+        const isPresent = memberRecords.some(r => r.attendanceDate === date && (!r.attendanceStatus || r.attendanceStatus === 'present'));
         const isAbsent = !isPresent; // Implicitly absent if no record, or explicitly absent
 
         // Update last attended

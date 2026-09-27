@@ -73,3 +73,15 @@ test('recognizes a first timer who returned at a later service', () => {
   assert.equal(result.latestService.returningVisitors, 1);
   assert.equal(result.care.recentFirstTimers[0].hasReturned, true);
 });
+
+test('merged history is matched by member ID and a present service ends the absence streak', () => {
+  const members = [member({ id: 'primary', name: 'New Name', phone: '0240000006' })];
+  const rows = [
+    attendance({ member_id: 'primary', name: 'Old Name', attendanceDate: '2026-08-23', attendanceStatus: 'absent' }),
+    attendance({ member_id: 'primary', name: 'Old Name', attendanceDate: '2026-08-30', attendanceStatus: 'absent' }),
+    attendance({ member_id: 'primary', name: 'Another Old Name', attendanceDate: '2026-09-06', attendanceStatus: 'present' }),
+  ];
+  const result = buildPastoralDashboard(rows, members, new Date('2026-09-09T12:00:00Z'));
+  assert.equal(result.latestService.memberAttendanceRate, 100);
+  assert.equal(result.care.absentMembers.length, 0);
+});

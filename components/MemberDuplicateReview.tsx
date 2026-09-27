@@ -85,7 +85,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
   useEffect(() => { load(page); }, [load, page, refreshKey]);
 
   const decide = async (group: DuplicateGroup, action: 'keep_separate' | 'merge') => {
-    if (action === 'merge' && !confirm(`Merge ${group.matchCount} matching record(s) into the selected primary? Existing values will be preserved and empty fields will be filled from the other records.`)) return;
+    if (action === 'merge' && !confirm(`Merge ${group.matchCount} matching record(s) into the selected primary? All attendance history will belong to the primary member. Existing values will be preserved and empty fields will be filled from the other records.`)) return;
     setWorkingGroup(group.groupKey);
     setError('');
     try {

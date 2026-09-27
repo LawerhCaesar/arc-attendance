@@ -95,7 +95,9 @@ export default function PastorDashboard({ onNavigate, initialData }: PastorDashb
     {
       label: 'Latest attendance',
       value: latestService.attendance,
-      helper: change === null ? 'No previous service' : `${change >= 0 ? '+' : ''}${change}% vs previous`,
+      helper: latestService.date && latestService.attendance === 0
+        ? 'No one marked present for this service yet'
+        : change === null ? 'No previous service' : `${change >= 0 ? '+' : ''}${change}% vs previous`,
       accent: 'border-blue-500',
       valueColor: 'text-blue-700',
     },
