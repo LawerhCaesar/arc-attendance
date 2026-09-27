@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 
@@ -44,6 +44,7 @@ interface RosterMember {
 }
 
 const DESIGNATIONS = ['Fellowship Leader', 'Cell Leader', 'BSCT Leader', 'Member'] as const;
+const ROSTER_PAGE_SIZE = 25;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -226,6 +227,7 @@ export default function EntryPage() {
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState('');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isLoadingRoster, setIsLoadingRoster] = useState(false);
+  const [rosterPage, setRosterPage] = useState(1);
 
   // ── Last Sunday Edit State ──
   const [lastSundayRecords, setLastSundayRecords] = useState<LastSundayRecord[]>([]);
@@ -331,6 +333,7 @@ export default function EntryPage() {
         }));
         if (mapped.length > 0) {
           setEntries(mapped);
+          setRosterPage(1);
           setMarkedPresent(new Set());
           setMessage({ type: 'success', text: `Loaded ${mapped.length} members from roster. Tap “Mark Present” for those who attended.` });
         }
@@ -433,6 +436,7 @@ export default function EntryPage() {
       id: newId,
       name: '', phone: '', location: '', birthday: '', fellowship: '', designation: 'Member', firstTimer: false,
     }, ...entries]);
+    setRosterPage(1);
     setEditingId(newId);
   };
 
@@ -732,6 +736,30 @@ export default function EntryPage() {
     e => e.attendanceStatus === 'present' && e.date === todayIso
   );
 
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return entries;
+    return entries.filter(entry =>
+      entry.name.toLowerCase().includes(query) ||
+      entry.phone.toLowerCase().includes(query) ||
+      entry.location.toLowerCase().includes(query) ||
+      entry.fellowship.toLowerCase().includes(query)
+    );
+  }, [entries, searchQuery]);
+
+  const rosterPageCount = Math.max(1, Math.ceil(filteredEntries.length / ROSTER_PAGE_SIZE));
+  const safeRosterPage = Math.min(rosterPage, rosterPageCount);
+  const rosterPageStart = (safeRosterPage - 1) * ROSTER_PAGE_SIZE;
+  const visibleEntries = filteredEntries.slice(rosterPageStart, rosterPageStart + ROSTER_PAGE_SIZE);
+
+  useEffect(() => {
+    setRosterPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (rosterPage > rosterPageCount) setRosterPage(rosterPageCount);
+  }, [rosterPage, rosterPageCount]);
+
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
@@ -742,13 +770,13 @@ export default function EntryPage() {
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative z-10">
         <Navbar />
-        <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="max-w-7xl mx-auto px-3 py-4 sm:px-4 sm:py-8">
 
           {/* Tab switcher */}
-          <div className="flex gap-1 mb-6 p-1 bg-black/30 backdrop-blur-sm rounded-xl w-fit">
+          <div className="flex gap-1 mb-4 sm:mb-6 p-1 bg-black/30 backdrop-blur-sm rounded-xl w-full sm:w-fit">
             <button
               onClick={() => setActiveTab('entries')}
-              className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === 'entries'
                   ? 'bg-white text-gray-900 shadow-md'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
@@ -758,7 +786,7 @@ export default function EntryPage() {
             </button>
             <button
               onClick={() => setActiveTab('cell-leaders')}
-              className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+              className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === 'cell-leaders'
                   ? 'bg-white text-gray-900 shadow-md'
                   : 'text-white/80 hover:text-white hover:bg-white/10'
@@ -770,8 +798,8 @@ export default function EntryPage() {
 
           {/* ── TAB 1: Regular Entries ───────────────────────────────────────── */}
           {activeTab === 'entries' && (
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-white rounded-lg shadow-md p-3 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-800">Mark Attendance</h1>
                   <div className="mt-2 flex items-center gap-4">
@@ -783,25 +811,25 @@ export default function EntryPage() {
                     </div>
                   </div>
                 </div>
-                <div className="space-x-2 flex items-center flex-wrap gap-y-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:flex-wrap">
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload" />
-                  <label htmlFor="excel-upload" className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition cursor-pointer text-sm">
+                  <label htmlFor="excel-upload" className="px-3 sm:px-4 py-2 bg-purple-600 text-white text-center rounded-md hover:bg-purple-700 transition cursor-pointer text-sm">
                     Import Excel
                   </label>
                   <button
                     onClick={fetchMembersForRoster}
                     disabled={isLoadingRoster}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                    className="px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
                   >
                     {isLoadingRoster ? 'Loading…' : '👥 Load Roster'}
                   </button>
-                  <button onClick={addRow} className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
+                  <button onClick={addRow} className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
                     Add Row
                   </button>
                   <button
                     onClick={handleSubmit}
                     disabled={isSubmitting}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                    className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
                   >
                     {isSubmitting ? 'Submitting…' : `Submit Present (${markedPresent.size})`}
                   </button>
@@ -836,7 +864,105 @@ export default function EntryPage() {
                 />
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="mb-3 flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  {filteredEntries.length === 0
+                    ? 'No matching members'
+                    : `Showing ${rosterPageStart + 1}–${Math.min(rosterPageStart + ROSTER_PAGE_SIZE, filteredEntries.length)} of ${filteredEntries.length}`}
+                </span>
+                {rosterPageCount > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setRosterPage(page => Math.max(1, page - 1))}
+                      disabled={safeRosterPage === 1}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Previous
+                    </button>
+                    <span className="min-w-20 text-center">Page {safeRosterPage} of {rosterPageCount}</span>
+                    <button
+                      type="button"
+                      onClick={() => setRosterPage(page => Math.min(rosterPageCount, page + 1))}
+                      disabled={safeRosterPage === rosterPageCount}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3 md:hidden">
+                {visibleEntries.map(entry => {
+                  const isEditing = editingId === entry.id;
+                  const isPresent = markedPresent.has(entry.id);
+                  const inputCls = (editing: boolean) =>
+                    `w-full px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 ${!editing ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`;
+
+                  return (
+                    <article key={entry.id} className={`rounded-xl border p-3 shadow-sm ${isPresent ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          {isEditing ? (
+                            <input type="text" value={entry.name} onChange={e => handleCellChange(entry.id, 'name', e.target.value)} className={inputCls(true)} placeholder="Full name" />
+                          ) : (
+                            <>
+                              <h2 className="truncate font-semibold text-gray-900">{entry.name || 'New attendee'}</h2>
+                              <p className="truncate text-xs text-gray-500">{entry.fellowship || 'Unassigned'} · {entry.designation || 'Member'}</p>
+                            </>
+                          )}
+                        </div>
+                        {isPresent && <span className="rounded-full bg-green-600 px-2 py-1 text-xs font-semibold text-white">Present</span>}
+                      </div>
+
+                      {isEditing ? (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <input type="tel" value={entry.phone} onChange={e => handleCellChange(entry.id, 'phone', e.target.value)} className={inputCls(true)} placeholder="Phone number" />
+                          <input type="text" value={entry.location} onChange={e => handleCellChange(entry.id, 'location', e.target.value)} className={inputCls(true)} placeholder="Location" />
+                          <FancyBirthdayPicker value={entry.birthday} onChange={(val: string) => handleCellChange(entry.id, 'birthday', val)} disabled={false} />
+                          <select value={entry.fellowship} onChange={e => handleCellChange(entry.id, 'fellowship', e.target.value)} className={inputCls(true)}>
+                            <option value="" disabled>Select Fellowship</option>
+                            {FELLOWSHIPS.map(f => <option key={f} value={f}>{f}</option>)}
+                            {entry.fellowship && !FELLOWSHIPS.includes(entry.fellowship) && <option value={entry.fellowship}>{entry.fellowship}</option>}
+                          </select>
+                          <select value={entry.designation} onChange={e => handleCellChange(entry.id, 'designation', e.target.value)} className={inputCls(true)}>
+                            {DESIGNATIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="mb-3 grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="block text-xs text-gray-500">Contact</span><span className="text-gray-800">{entry.phone || '—'}</span></div>
+                          <div><span className="block text-xs text-gray-500">Location</span><span className="text-gray-800">{entry.location || '—'}</span></div>
+                          <div><span className="block text-xs text-gray-500">Birthday</span><span className="text-gray-800">{entry.birthday || '—'}</span></div>
+                          <div><span className="block text-xs text-gray-500">Visitor check</span><span className="font-medium text-blue-700">Automatic</span></div>
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-200 pt-3">
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => setEditingId(null)} className="rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white">Save</button>
+                            <button onClick={() => setEditingId(null)} className="rounded-md bg-gray-600 px-3 py-2 text-sm font-medium text-white">Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => setEditingId(entry.id)} className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white">Edit</button>
+                            <button onClick={() => handleMarkPresent(entry.id)} className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold ${isPresent ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                              {isPresent ? '✓ Present' : 'Mark Present'}
+                            </button>
+                          </>
+                        )}
+                        {entries.length > 1 && !isEditing && (
+                          <button onClick={() => removeRow(entry.id)} className="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">Remove</button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto md:block">
                 <table className="min-w-full divide-y divide-gray-200 border border-gray-300">
                   <thead className="bg-gray-50">
                     <tr>
@@ -848,18 +974,7 @@ export default function EntryPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {entries
-                      .filter(entry => {
-                        if (!searchQuery.trim()) return true;
-                        const q = searchQuery.toLowerCase();
-                        return (
-                          entry.name.toLowerCase().includes(q) ||
-                          entry.phone.toLowerCase().includes(q) ||
-                          entry.location.toLowerCase().includes(q) ||
-                          entry.fellowship.toLowerCase().includes(q)
-                        );
-                      })
-                      .map(entry => {
+                    {visibleEntries.map(entry => {
                         const isEditing = editingId === entry.id;
                         const isPresent = markedPresent.has(entry.id);
                         const inputCls = (editing: boolean) =>
