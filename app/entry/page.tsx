@@ -3,11 +3,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
 import { FELLOWSHIPS } from '@/lib/fellowships';
+import { dateInAccra } from '@/lib/birthdays';
+import { entryMetrics, reconcileEntryRoster } from '@/lib/entry-roster';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AttendanceEntry {
   id: string;
+  rosterMemberId?: string;
+  dirty?: boolean;
   name: string;
   phone: string;
   location: string;
@@ -65,23 +69,17 @@ const formatDate = (date: Date = new Date()): string => {
   return `${dayName}, ${day}${getOrdinal(day)} ${month}, ${year}`;
 };
 
-const getTodayKey = () => `attendance-${new Date().toISOString().split('T')[0]}`;
+const getTodayKey = () => `attendance-${dateInAccra()}`;
 
 /**
  * Returns the ISO date string (YYYY-MM-DD) of the most recent Sunday.
  * If today IS a Sunday, returns today. Otherwise returns the previous Sunday.
- * All dates are computed in local time.
+ * Service dates use the church's Ghana calendar, independent of device timezone.
  */
 const getMostRecentSunday = (): string => {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = Sunday
-  const daysBack = dayOfWeek; // 0 if Sunday, 1 if Monday, …, 6 if Saturday
-  const sunday = new Date(now);
-  sunday.setDate(now.getDate() - daysBack);
-  const year = sunday.getFullYear();
-  const month = String(sunday.getMonth() + 1).padStart(2, '0');
-  const day = String(sunday.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const sunday = new Date(`${dateInAccra()}T00:00:00Z`);
+  sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
+  return sunday.toISOString().slice(0, 10);
 };
 
 const designationColors: Record<string, string> = {
@@ -228,6 +226,10 @@ export default function EntryPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isLoadingRoster, setIsLoadingRoster] = useState(false);
   const [rosterPage, setRosterPage] = useState(1);
+  const [activeRosterCount, setActiveRosterCount] = useState<number | null>(null);
+  const [serviceSummary, setServiceSummary] = useState<{ serviceDate: string; savedPresent: number } | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
+  const [rosterRecovery, setRosterRecovery] = useState<AttendanceEntry[]>([]);
 
   // ── Last Sunday Edit State ──
   const [lastSundayRecords, setLastSundayRecords] = useState<LastSundayRecord[]>([]);
@@ -252,26 +254,27 @@ export default function EntryPage() {
   const entriesRef = useRef<AttendanceEntry[]>([]);
   const markedPresentRef = useRef<Set<string>>(new Set());
   const fetchSubmittedEntriesRef = useRef<(() => Promise<void>) | null>(null);
+  const summaryRequest = useRef(0);
 
   useEffect(() => { entriesRef.current = entries; }, [entries]);
   useEffect(() => { markedPresentRef.current = markedPresent; }, [markedPresent]);
 
   // ── Persistence ──
-  const loadPersistedData = (): boolean => {
+  const loadPersistedData = (): { entries: AttendanceEntry[]; marked: Set<string> } => {
     try {
       const stored = localStorage.getItem(getTodayKey());
       if (stored) {
         const data = JSON.parse(stored);
-        if (data.date === new Date().toISOString().split('T')[0]) {
+        if (data.date === dateInAccra()) {
           if (data.entries?.length > 0) {
             setEntries(data.entries);
             if (data.markedPresent) setMarkedPresent(new Set(data.markedPresent));
-            return true;
+            return { entries: data.entries, marked: new Set<string>(data.markedPresent || []) };
           }
         }
       }
     } catch {}
-    return false;
+    return { entries: [], marked: new Set<string>() };
   };
 
   const savePersistedData = (e: AttendanceEntry[], m: Set<string>) => {
@@ -279,14 +282,14 @@ export default function EntryPage() {
       localStorage.setItem(getTodayKey(), JSON.stringify({
         entries: e,
         markedPresent: Array.from(m),
-        date: new Date().toISOString().split('T')[0],
+        date: dateInAccra(),
       }));
     } catch {}
   };
 
   const clearOldData = () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = dateInAccra();
       Object.keys(localStorage).forEach(key => {
         if (key.startsWith('attendance-') && key !== `attendance-${today}`)
           localStorage.removeItem(key);
@@ -295,11 +298,30 @@ export default function EntryPage() {
   };
 
   // ── Fetch Submitted Entries ──
+  const fetchServiceSummary = useCallback(async () => {
+    const requestId = ++summaryRequest.current;
+    try {
+      const res = await fetch('/api/attendance/service-summary', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Summary unavailable');
+      const result = await res.json();
+      if (requestId === summaryRequest.current) {
+        setServiceSummary(result);
+        setSummaryError(false);
+      }
+    } catch {
+      if (requestId === summaryRequest.current) {
+        setServiceSummary(null);
+        setSummaryError(true);
+      }
+    }
+  }, []);
+
   const fetchSubmittedEntries = async () => {
     try {
       setIsLoading(true);
-      const res = await fetch('/api/attendance');
+      const res = await fetch('/api/attendance', { cache: 'no-store' });
       if (res.ok) setSubmittedEntries(await res.json());
+      else setSubmittedEntries([]);
     } catch {} finally { setIsLoading(false); }
   };
 
@@ -309,20 +331,22 @@ export default function EntryPage() {
   const fetchLastSundayRecords = async () => {
     setIsLoadingLastSunday(true);
     try {
-      const res = await fetch(`/api/attendance/by-date?date=${getMostRecentSunday()}`);
+      const res = await fetch(`/api/attendance/by-date?date=${getMostRecentSunday()}`, { cache: 'no-store' });
       if (res.ok) setLastSundayRecords(await res.json());
     } catch {} finally { setIsLoadingLastSunday(false); }
   };
 
   // ── Preload Member Roster ──
-  const fetchMembersForRoster = async () => {
+  const fetchMembersForRoster = async (restored?: { entries: AttendanceEntry[]; marked: Set<string> }) => {
     setIsLoadingRoster(true);
     try {
-      const res = await fetch('/api/members');
+      const res = await fetch('/api/members', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Roster unavailable');
       if (res.ok) {
         const data = await res.json();
         const mapped: AttendanceEntry[] = data.map((m: any) => ({
           id: m.id || `${Date.now()}-${Math.random()}`,
+          rosterMemberId: m.id,
           name: m.name || '',
           phone: m.phone || '',
           location: m.location || '',
@@ -331,12 +355,23 @@ export default function EntryPage() {
           designation: m.designation || 'Member',
           firstTimer: false,
         }));
-        if (mapped.length > 0) {
-          setEntries(mapped);
-          setRosterPage(1);
-          setMarkedPresent(new Set());
-          setMessage({ type: 'success', text: `Loaded ${mapped.length} members from roster. Tap “Mark Present” for those who attended.` });
+        const cached = restored?.entries ?? entriesRef.current;
+        const reconciled = reconcileEntryRoster(mapped, cached, restored?.marked ?? markedPresentRef.current);
+        if (reconciled.removed.length) {
+          let recovery = reconciled.removed;
+          try {
+            const key = `arc-roster-recovery-${dateInAccra()}`;
+            const old: AttendanceEntry[] = JSON.parse(localStorage.getItem(key) || '[]');
+            recovery = Array.from(new Map([...(Array.isArray(old) ? old : []), ...recovery].map(row => [row.id, row])).values());
+            localStorage.setItem(key, JSON.stringify(recovery));
+          } catch {}
+          setRosterRecovery(recovery);
         }
+        setActiveRosterCount(mapped.length);
+        setEntries(reconciled.entries);
+        setMarkedPresent(reconciled.marked);
+        setRosterPage(1);
+        setMessage({ type: 'success', text: `Refreshed ${mapped.length} active roster members. Valid selections and drafts have been kept.${reconciled.removed.length ? ` ${reconciled.removed.length} old roster rows were removed from this worksheet; a recovery copy is available below.` : ''}` });
       }
     } catch {
       setMessage({ type: 'error', text: 'Failed to load member roster.' });
@@ -349,7 +384,7 @@ export default function EntryPage() {
   const fetchCellLeaders = useCallback(async () => {
     setIsLoadingCL(true);
     try {
-      const res = await fetch('/api/members?designation=Cell Leader,Fellowship Leader');
+      const res = await fetch('/api/members?designation=Cell Leader,Fellowship Leader', { cache: 'no-store' });
       if (res.ok) {
         const data: RosterMember[] = await res.json();
         setCellLeaders(data);
@@ -403,16 +438,25 @@ export default function EntryPage() {
 
   useEffect(() => {
     clearOldData();
-    const hadSession = loadPersistedData();
+    const restored = loadPersistedData();
+    try {
+      const recovered = JSON.parse(localStorage.getItem(`arc-roster-recovery-${dateInAccra()}`) || '[]');
+      if (Array.isArray(recovered)) setRosterRecovery(recovered);
+    } catch {}
     fetchSubmittedEntries();
+    fetchServiceSummary();
     if (new Date().getDay() !== 0) {
       fetchLastSundayRecords();
     }
-    if (!hadSession) {
-      fetchMembersForRoster();
-    }
-    setIsInitialLoad(false);
-  }, []);
+    fetchMembersForRoster(restored).finally(() => setIsInitialLoad(false));
+  }, [fetchServiceSummary]);
+
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') fetchServiceSummary(); };
+    const timer = setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [fetchServiceSummary]);
 
   useEffect(() => {
     if (!isInitialLoad) savePersistedData(entries, markedPresent);
@@ -426,7 +470,7 @@ export default function EntryPage() {
 
   // ── Regular Entry Handlers ──
   const handleCellChange = (id: string, field: keyof AttendanceEntry, value: string | boolean) => {
-    setEntries(entries.map(e => e.id === id ? { ...e, [field]: value } : e));
+    setEntries(entries.map(e => e.id === id ? { ...e, [field]: value, dirty: true } : e));
     setMessage(null);
   };
 
@@ -442,9 +486,14 @@ export default function EntryPage() {
 
   const removeRow = (id: string) => {
     if (entries.length > 1) { setEntries(entries.filter(e => e.id !== id)); setEditingId(null); }
+    setMarkedPresent(prev => { const next = new Set(prev); next.delete(id); return next; });
   };
 
   const handleMarkPresent = (id: string) => {
+    if (!entries.find(entry => entry.id === id)?.name.trim()) {
+      setMessage({ type: 'error', text: 'Enter a name before selecting this person.' });
+      return;
+    }
     setMarkedPresent(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -468,7 +517,7 @@ export default function EntryPage() {
 
     try {
       const serviceDate = getMostRecentSunday();
-      const responses = await Promise.all(marked.map(e =>
+      const responses = await Promise.allSettled(marked.map(e =>
         fetch('/api/attendance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -481,21 +530,19 @@ export default function EntryPage() {
         })
       ));
 
-      const hasError = responses.some(r => !r.ok);
-      if (hasError) {
-        setMessage({ type: 'error', text: 'Some entries failed to submit. Please try again.' });
-      } else {
-        setMessage({ type: 'success', text: `${marked.length} record(s) submitted successfully!` });
-        const remaining = entries.filter(e => !markedPresent.has(e.id));
-        setEntries(remaining.length === 0 ? [{
-          id: Date.now().toString(),
-          name: '', phone: '', location: '', birthday: '', fellowship: '', designation: 'Member', firstTimer: false,
-        }] : remaining);
-        const newMarked = new Set(markedPresent);
-        marked.forEach(e => newMarked.delete(e.id));
-        setMarkedPresent(newMarked);
-        await fetchSubmittedEntries();
-      }
+      const successful = new Set(marked.filter((_, index) => {
+        const result = responses[index];
+        return result.status === 'fulfilled' && result.value.ok;
+      }).map(entry => entry.id));
+      const failed = marked.length - successful.size;
+      setMarkedPresent(previous => new Set(Array.from(previous).filter(id => !successful.has(id))));
+      // The roster is stable after submitting. Only successfully submitted
+      // one-off drafts leave the worksheet; failed selections remain for retry.
+      setEntries(previous => previous.filter(entry => entry.rosterMemberId || !successful.has(entry.id)));
+      setMessage(failed
+        ? { type: 'error', text: `${successful.size} saved; ${failed} failed and remain selected for retry.` }
+        : { type: 'success', text: `${successful.size} selection(s) saved. Confirmed attendance is shown separately below.` });
+      await Promise.all([fetchSubmittedEntries(), fetchServiceSummary()]);
     } catch {
       setMessage({ type: 'error', text: 'An error occurred. Please try again.' });
     } finally {
@@ -573,6 +620,8 @@ export default function EntryPage() {
 
         if (imported.length === 0) { setMessage({ type: 'error', text: 'No valid entries found' }); return; }
         setEntries(imported);
+        setMarkedPresent(new Set());
+        setRosterPage(1);
         setMessage({ type: 'success', text: `Imported ${imported.length} entries from Excel` });
       } catch { setMessage({ type: 'error', text: 'Error parsing Excel file.' }); }
     };
@@ -641,7 +690,7 @@ export default function EntryPage() {
         )
       );
 
-      const failed = responses.filter(r => r.status === 'rejected').length;
+      const failed = responses.filter(r => r.status === 'rejected' || !r.value.ok).length;
       const presentCount = toSubmit.filter(cl => presentCLIds.has(cl.id)).length;
       const absentCount = toSubmit.length - presentCount;
 
@@ -650,11 +699,12 @@ export default function EntryPage() {
       } else {
         setClMessage({
           type: 'success',
-          text: `Attendance recorded: ${presentCount} present, ${absentCount} absent.`,
+          text: `Saved ${presentCount} present and ${absentCount} absent selections. Previously saved present records are preserved.`,
         });
         setClSubmitted(true);
         await fetchSubmittedEntries();
       }
+      await fetchServiceSummary();
     } catch {
       setClMessage({ type: 'error', text: 'An error occurred. Please try again.' });
     } finally {
@@ -731,10 +781,10 @@ export default function EntryPage() {
   const clPresentCount = filteredCellLeaders.filter(cl => presentCLIds.has(cl.id)).length;
   const clAbsentCount = filteredCellLeaders.length - clPresentCount;
 
-  const todayIso = new Date().toISOString().split('T')[0];
   const pastAttendanceRecords = submittedEntries.filter(
-    e => e.attendanceStatus === 'present' && e.date === todayIso
+    e => e.attendanceStatus === 'present' && (e.attendanceDate || e.date) === getMostRecentSunday()
   );
+  const worksheetMetrics = entryMetrics(entries, markedPresent);
 
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -802,14 +852,19 @@ export default function EntryPage() {
               <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-800">Mark Attendance</h1>
-                  <div className="mt-2 flex items-center gap-4">
+                  <div className="mt-2 flex flex-wrap items-center gap-4">
                     <div className="text-sm text-gray-600">
-                      Total: <span className="font-semibold text-gray-900">{entries.length}</span>
+                      Active roster: <span className="font-semibold text-gray-900">{isLoadingRoster ? '…' : activeRosterCount ?? 'Unavailable'}</span>
                     </div>
                     <div className="text-sm text-gray-600">
-                      Marked Present: <span className="font-semibold text-green-600">{markedPresent.size}</span>
+                      Selected to submit: <span className="font-semibold text-blue-600">{worksheetMetrics.selected}</span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Saved present for this service: <span className="font-semibold text-green-700">{serviceSummary?.serviceDate === getMostRecentSunday() ? serviceSummary.savedPresent : summaryError ? 'Unavailable' : '…'}</span>
                     </div>
                   </div>
+                  <p className="mt-2 text-xs text-gray-500">Selections are unsaved until submitted. Saved attendance counts unique people across all submissions, not just this browser.</p>
+                  {summaryError && <button type="button" onClick={fetchServiceSummary} className="mt-1 text-xs font-semibold text-blue-700">Retry saved attendance count</button>}
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:flex-wrap">
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload" />
@@ -817,21 +872,21 @@ export default function EntryPage() {
                     Import Excel
                   </label>
                   <button
-                    onClick={fetchMembersForRoster}
+                    onClick={() => { fetchMembersForRoster(); fetchServiceSummary(); }}
                     disabled={isLoadingRoster}
                     className="px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
                   >
-                    {isLoadingRoster ? 'Loading…' : '👥 Load Roster'}
+                    {isLoadingRoster ? 'Loading…' : '👥 Refresh Roster'}
                   </button>
                   <button onClick={addRow} className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition text-sm">
                     Add Row
                   </button>
                   <button
                     onClick={handleSubmit}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isLoadingRoster || worksheetMetrics.selected === 0}
                     className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
                   >
-                    {isSubmitting ? 'Submitting…' : `Submit Present (${markedPresent.size})`}
+                    {isSubmitting ? 'Submitting…' : `Submit Present (${worksheetMetrics.selected})`}
                   </button>
                 </div>
               </div>
@@ -841,6 +896,18 @@ export default function EntryPage() {
                   {message.text}
                 </div>
               )}
+
+              {rosterRecovery.length > 0 && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {rosterRecovery.length} cached roster rows no longer belong to the active roster, for example after merging. They are excluded from attendance selections. Any details from those rows can be recovered here.
+                <button type="button" className="ml-2 font-semibold underline" onClick={() => {
+                  const url = URL.createObjectURL(new Blob([JSON.stringify(rosterRecovery, null, 2)], { type: 'application/json' }));
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `attendance-roster-recovery-${dateInAccra()}.json`;
+                  link.click();
+                  URL.revokeObjectURL(url);
+                }}>Download old draft details</button>
+              </div>}
 
               <div className="mb-4 pb-3 border-b border-gray-300">
                 <p className="text-lg font-semibold text-gray-700">
@@ -867,8 +934,9 @@ export default function EntryPage() {
               <div className="mb-3 flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between">
                 <span>
                   {filteredEntries.length === 0
-                    ? 'No matching members'
-                    : `Showing ${rosterPageStart + 1}–${Math.min(rosterPageStart + ROSTER_PAGE_SIZE, filteredEntries.length)} of ${filteredEntries.length}`}
+                    ? 'No matching worksheet rows'
+                    : `Showing rows ${rosterPageStart + 1}–${Math.min(rosterPageStart + ROSTER_PAGE_SIZE, filteredEntries.length)} of ${filteredEntries.length}`}
+                  <span className="ml-2 text-xs">Worksheet: {worksheetMetrics.people} named rows · {worksheetMetrics.blankRows} blank rows (excluded from selection totals)</span>
                 </span>
                 {rosterPageCount > 1 && (
                   <div className="flex items-center gap-2">
@@ -1287,15 +1355,15 @@ export default function EntryPage() {
                 <div className="mt-4 flex gap-6 flex-wrap">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-green-500" />
-                    <span className="text-sm font-medium text-gray-700">Present: <strong className="text-green-600">{clPresentCount}</strong></span>
+                    <span className="text-sm font-medium text-gray-700">Selected present: <strong className="text-green-600">{clPresentCount}</strong></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-red-400" />
-                    <span className="text-sm font-medium text-gray-700">Absent: <strong className="text-red-600">{clAbsentCount}</strong></span>
+                    <span className="text-sm font-medium text-gray-700">Not selected: <strong className="text-red-600">{clAbsentCount}</strong></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-gray-400" />
-                    <span className="text-sm font-medium text-gray-700">Total: <strong>{filteredCellLeaders.length}</strong></span>
+                    <span className="text-sm font-medium text-gray-700">Visible leaders: <strong>{filteredCellLeaders.length}</strong></span>
                   </div>
                 </div>
               </div>
@@ -1383,7 +1451,7 @@ export default function EntryPage() {
 
                         {/* Status */}
                         <div className={`mt-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${isPresent ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
-                          {isPresent ? 'Present' : 'Absent'}
+                          {isPresent ? 'Selected present' : 'Not selected'}
                         </div>
                       </button>
                     );
@@ -1409,7 +1477,7 @@ export default function EntryPage() {
 
               {clSubmitted && (
                 <div className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between">
-                  <div className="text-green-700 font-medium text-sm">✓ Attendance recorded for today</div>
+                  <div className="text-green-700 font-medium text-sm">✓ Attendance recorded for the displayed service date</div>
                   <button
                     onClick={() => { setPresentCLIds(new Set()); setClSubmitted(false); setClMessage(null); }}
                     className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition"
