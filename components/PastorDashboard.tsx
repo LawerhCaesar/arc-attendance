@@ -18,6 +18,7 @@ type Destination = 'absenteeism' | 'demographics' | 'first-timers' | 'members';
 interface PastorDashboardProps {
   onNavigate: (destination: Destination) => void;
   initialData?: PastoralDashboardData;
+  allowedDestinations?: readonly string[];
 }
 
 const formatServiceDate = (value: string | null) => value
@@ -51,7 +52,8 @@ function LoadingState() {
   );
 }
 
-export default function PastorDashboard({ onNavigate, initialData }: PastorDashboardProps) {
+export default function PastorDashboard({ onNavigate, initialData, allowedDestinations }: PastorDashboardProps) {
+  const mayNavigate = (destination: Destination) => !allowedDestinations || allowedDestinations.includes(destination);
   const [data, setData] = useState<PastoralDashboardData | null>(initialData || null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(!initialData);
@@ -187,9 +189,9 @@ export default function PastorDashboard({ onNavigate, initialData }: PastorDashb
             <a href="/entry" className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-blue-50">
               Mark attendance
             </a>
-            <button onClick={() => onNavigate('members')} className="rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20">
+            {mayNavigate('members') && <button onClick={() => onNavigate('members')} className="rounded-lg border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20">
               Find a person
-            </button>
+            </button>}
           </div>
         </div>
       </section>
@@ -211,7 +213,7 @@ export default function PastorDashboard({ onNavigate, initialData }: PastorDashb
               <h3 className="font-bold text-gray-900">People needing attention</h3>
               <p className="mt-0.5 text-xs text-gray-500">Current absence alerts · First timers from the selected period</p>
             </div>
-            <button onClick={() => onNavigate('absenteeism')} className="text-sm font-semibold text-blue-700 hover:text-blue-900">View all</button>
+            {mayNavigate('absenteeism') && <button onClick={() => onNavigate('absenteeism')} className="text-sm font-semibold text-blue-700 hover:text-blue-900">View all</button>}
           </div>
 
           <div className="grid md:grid-cols-2 divide-y md:divide-x md:divide-y-0 divide-gray-100">
@@ -238,7 +240,7 @@ export default function PastorDashboard({ onNavigate, initialData }: PastorDashb
             <div className="p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-gray-800">First timers in this period</h4>
-                <button onClick={() => onNavigate('first-timers')} className="text-xs font-semibold text-violet-700 hover:text-violet-900">Open pipeline</button>
+                {mayNavigate('first-timers') && <button onClick={() => onNavigate('first-timers')} className="text-xs font-semibold text-violet-700 hover:text-violet-900">Open pipeline</button>}
               </div>
               {care.recentFirstTimers.length === 0 ? <EmptyState>No first timers recorded in this period.</EmptyState> : (
                 <div className="space-y-2">
@@ -267,7 +269,7 @@ export default function PastorDashboard({ onNavigate, initialData }: PastorDashb
               <h3 className="font-bold text-gray-900">Upcoming birthdays</h3>
               <p className="mt-0.5 text-xs text-gray-500">Current roster · Next 14 days · {care.upcomingBirthdays.length} birthdays</p>
             </div>
-            <button onClick={() => onNavigate('demographics')} className="text-sm font-semibold text-pink-700 hover:text-pink-900">View all</button>
+            {mayNavigate('demographics') && <button onClick={() => onNavigate('demographics')} className="text-sm font-semibold text-pink-700 hover:text-pink-900">View all</button>}
           </div>
           <div className="p-5">
             {care.upcomingBirthdays.length === 0 ? <EmptyState>No birthdays in the next 14 days.</EmptyState> : (
@@ -343,7 +345,7 @@ export default function PastorDashboard({ onNavigate, initialData }: PastorDashb
                 Current roster: {dataQuality.missingPhone} missing phone · {dataQuality.missingBirthday} missing or invalid birthday · {dataQuality.unassignedFellowship} unassigned fellowship
               </p>
             </div>
-            <button onClick={() => onNavigate('members')} className="self-start rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Review roster</button>
+            {mayNavigate('members') && <button onClick={() => onNavigate('members')} className="self-start rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-800">Review roster</button>}
           </div>
         </section>
       )}

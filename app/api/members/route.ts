@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMembers, createMember } from '@/lib/database';
-import { getAuthContext, isAuthenticated } from '@/lib/auth';
+import { getAuthContext, hasPermission } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authenticated = await isAuthenticated(['admin', 'pastor']);
+    const authenticated = await hasPermission('members');
     if (!authenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

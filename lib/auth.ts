@@ -1,24 +1,23 @@
 import { cookies } from 'next/headers';
 import { createHmac, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { getSupabaseAdmin } from './supabase-admin';
+import { configuredUsers } from './configured-users';
+import { BUILTIN_ROLES, DEFAULT_PERMISSIONS, canAccess, type Permission } from './permissions';
 
 const SESSION_COOKIE_NAME = 'admin_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-export const APP_ROLES = [
-  'admin',
-  'pastor',
-  'attendance',
-  'fellowship_leader',
-  'welfare',
-  'first_timers',
-] as const;
-export type AppRole = (typeof APP_ROLES)[number];
+export const APP_ROLES = BUILTIN_ROLES;
+export type AppRole = string;
 
 export interface AuthContext {
   username: string;
   role: AppRole;
   fellowship?: string;
+  permissions: Permission[];
+  accountId?: string;
+  sessionVersion?: number;
 }
 
 export function homeForRole(role: AppRole): string {
@@ -60,7 +59,8 @@ function decodeSession(token: string): SessionPayload | null {
 
   try {
     const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString()) as SessionPayload;
-    if (!payload.username || !APP_ROLES.includes(payload.role) || payload.expiresAt <= Date.now()) return null;
+    if (typeof payload.username !== 'string' || typeof payload.role !== 'string' || typeof payload.expiresAt !== 'number' || payload.expiresAt <= Date.now()) return null;
+    if (!payload.accountId && !APP_ROLES.some(role => role === payload.role)) return null;
     return payload;
   } catch {
     return null;
@@ -75,7 +75,7 @@ export async function verifyPassword(password: string, storedPassword: string): 
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10);
+  return bcrypt.hash(password, 12);
 }
 
 export async function createSession(context: AuthContext): Promise<string> {
@@ -107,10 +107,26 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   if (!session) return null;
   const payload = decodeSession(session);
   if (!payload) return null;
+  if (payload.accountId) {
+    // Resolve permissions on every request. Disabling an account, resetting a
+    // password or changing roles immediately invalidates old sessions.
+    const admin = getSupabaseAdmin();
+    if (!admin) return null;
+    const { data: account, error } = await admin.from('staff_accounts')
+      .select('id, username, role_id, fellowship, is_active, session_version')
+      .eq('id', payload.accountId).maybeSingle();
+    if (error || !account?.is_active || account.session_version !== payload.sessionVersion) return null;
+    const { data: role, error: roleError } = await admin.from('staff_roles').select('key, permissions').eq('id', account.role_id).single();
+    if (roleError || !role) return null;
+    return { username: account.username, role: role.key, permissions: role.permissions, fellowship: account.fellowship || undefined, accountId: account.id, sessionVersion: account.session_version };
+  }
+  const configured = configuredUsers().find(user => user.username === payload.username);
+  if (!configured) return null;
   return {
-    username: payload.username,
-    role: payload.role,
-    fellowship: payload.fellowship,
+    username: configured.username,
+    role: configured.role,
+    fellowship: configured.fellowship,
+    permissions: DEFAULT_PERMISSIONS[configured.role],
   };
 }
 
@@ -123,4 +139,8 @@ export async function isAuthenticated(allowedRoles?: readonly AppRole[]): Promis
   const context = await getAuthContext();
   if (!context) return false;
   return !allowedRoles || allowedRoles.includes(context.role);
+}
+
+export async function hasPermission(...permissions: Permission[]): Promise<boolean> {
+  return canAccess(await getAuthContext(), ...permissions);
 }

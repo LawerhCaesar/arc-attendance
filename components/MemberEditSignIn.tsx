@@ -22,8 +22,8 @@ export default function MemberEditSignIn({ onSignedIn }: { onSignedIn: () => voi
       const result = await response.json();
       if (!response.ok) {
         setError(result.error || 'Sign-in failed. Please try again.');
-      } else if (!['admin', 'pastor'].includes(result.role)) {
-        setError('This account cannot edit the roster. Sign in with an admin or pastor account.');
+      } else if (!result.permissions?.includes('members')) {
+        setError('This account cannot edit the roster. Sign in with an account that has Member Roster access.');
       } else {
         setPassword('');
         onSignedIn();

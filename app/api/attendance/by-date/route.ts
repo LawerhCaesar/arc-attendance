@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthContext } from '@/lib/auth';
+import { canAccess, ATTENDANCE_READ_PERMISSIONS } from '@/lib/permissions';
 import { fetchAllRows } from '@/lib/pagination';
 import { consolidateLinkedAttendance } from '@/lib/attendance-identity';
 import type { AttendanceRecord } from '@/lib/database';
@@ -11,7 +12,7 @@ import type { AttendanceRecord } from '@/lib/database';
  */
 export async function GET(request: NextRequest) {
   const context = await getAuthContext();
-  if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+  if (!context || !canAccess(context, ...ATTENDANCE_READ_PERMISSIONS)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

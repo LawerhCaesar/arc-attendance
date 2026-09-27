@@ -15,13 +15,6 @@ function toBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function homeForRole(role: string): string {
-  if (role === 'welfare') return '/welfare';
-  if (role === 'first_timers') return '/first-timers';
-  if (role === 'attendance' || role === 'fellowship_leader') return '/entry';
-  return '/admin';
-}
-
 async function verifySession(session: string | undefined): Promise<string | null> {
   if (!session) return null;
 
@@ -46,7 +39,7 @@ async function verifySession(session: string | undefined): Promise<string | null
     const payload = JSON.parse(fromBase64Url(encodedPayload));
     const valid = Boolean(
       payload.username &&
-      APP_ROLES.includes(payload.role) &&
+      typeof payload.role === 'string' && (APP_ROLES.includes(payload.role) || typeof payload.accountId === 'string') &&
       typeof payload.expiresAt === 'number' &&
       payload.expiresAt > Date.now()
     );
@@ -81,18 +74,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (pathname === '/admin/login' && authenticated) {
-    return NextResponse.redirect(new URL(homeForRole(role!), request.url));
-  }
-
-  const allowed =
-    (pathname.startsWith('/admin') && ['admin', 'pastor'].includes(role!)) ||
-    (pathname.startsWith('/welfare') && ['admin', 'pastor', 'welfare'].includes(role!)) ||
-    (pathname.startsWith('/first-timers') && ['admin', 'pastor', 'first_timers'].includes(role!));
-
-  if (authenticated && !allowed) {
-    return NextResponse.redirect(new URL(homeForRole(role!), request.url));
-  }
+  // Role permissions are resolved from the database by the page/API, not from
+  // a possibly stale cookie. Leave login accessible for revoked sessions.
 
   return NextResponse.next();
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appendAttendance, findRosterMember, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
 import { getAuthContext } from '@/lib/auth';
+import { canAccess, ATTENDANCE_READ_PERMISSIONS } from '@/lib/permissions';
 import { recordFirstTimerJourney } from '@/lib/visitor-journeys';
 
 /**
@@ -22,8 +23,7 @@ function snapToSunday(isoDate: string): string {
 export async function POST(request: NextRequest) {
   try {
     const context = await getAuthContext();
-    const staffRoles = ['admin', 'pastor', 'attendance', 'fellowship_leader'];
-    const canCorrectAttendance = Boolean(context && staffRoles.includes(context.role));
+    const canCorrectAttendance = canAccess(context, 'entry', 'past-entry');
 
     const body = await request.json();
     const {
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     const context = await getAuthContext();
-    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+    if (!context || !canAccess(context, ...ATTENDANCE_READ_PERMISSIONS)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

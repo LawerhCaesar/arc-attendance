@@ -1,7 +1,10 @@
 import DepartmentHeader from '@/components/DepartmentHeader';
 import FirstTimerWorkspace from '@/components/FirstTimerWorkspace';
+import { hasPermission } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 
-export default function FirstTimersDepartmentPage() {
+export default async function FirstTimersDepartmentPage() {
+  if (!(await hasPermission('first-timers'))) redirect('/admin');
   return (
     <div className="min-h-screen bg-gray-50">
       <DepartmentHeader

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateMember, deleteMember } from '@/lib/database';
 import { getAuthContext } from '@/lib/auth';
+import { canAccess } from '@/lib/permissions';
 
 async function checkEditAccess() {
   const context = await getAuthContext();
   if (!context) {
     return NextResponse.json({ error: 'Your session has ended. Sign in again to save your changes.', code: 'SESSION_REQUIRED' }, { status: 401 });
   }
-  if (!['admin', 'pastor'].includes(context.role)) {
-    return NextResponse.json({ error: 'Only an admin or pastor can edit the member roster.', code: 'ROLE_FORBIDDEN' }, { status: 403 });
+  if (!canAccess(context, 'members')) {
+    return NextResponse.json({ error: 'Your role does not have Member Roster access.', code: 'ROLE_FORBIDDEN' }, { status: 403 });
   }
   return null;
 }

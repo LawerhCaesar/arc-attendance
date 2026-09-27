@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAttendanceData } from '@/lib/database';
-import { isAuthenticated } from '@/lib/auth';
+import { hasPermission } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const authenticated = await isAuthenticated(['admin', 'pastor']);
+    const authenticated = await hasPermission('overview');
     if (!authenticated) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

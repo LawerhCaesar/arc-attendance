@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/lib/auth';
+import { hasPermission } from '@/lib/auth';
 import { getAttendanceData } from '@/lib/database';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
@@ -50,7 +50,7 @@ async function legacyJourneys() {
 
 export async function GET() {
   try {
-    if (!(await isAuthenticated(['admin', 'pastor', 'first_timers']))) {
+    if (!(await hasPermission('first-timers'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -96,7 +96,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    if (!(await isAuthenticated(['admin', 'pastor', 'first_timers']))) {
+    if (!(await hasPermission('first-timers'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

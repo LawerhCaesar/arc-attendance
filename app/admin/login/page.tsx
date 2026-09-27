@@ -17,13 +17,7 @@ export default function AdminLoginPage() {
       .then(async res => {
         if (res.ok) {
           const session = await res.json();
-          const roleHomes: Record<string, string> = {
-            welfare: '/welfare',
-            first_timers: '/first-timers',
-            attendance: '/entry',
-            fellowship_leader: '/entry',
-          };
-          router.push(roleHomes[session.role] || '/admin');
+          router.push(session.redirectTo || '/admin');
         }
       })
       .catch(() => {

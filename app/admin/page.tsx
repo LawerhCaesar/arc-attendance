@@ -12,8 +12,11 @@ import FirstTimerWorkspace from '@/components/FirstTimerWorkspace';
 import PastAttendanceEntry from '@/components/PastAttendanceEntry';
 import AbsenteeismTracker from '@/components/AbsenteeismTracker';
 import PastSundaysList from '@/components/PastSundaysList';
+import AccessManagement from '@/components/AccessManagement';
+import WelfareBirthdayCenter from '@/components/WelfareBirthdayCenter';
+import type { Permission } from '@/lib/permissions';
 
-type AdminTab = 'overview' | 'past-entry' | 'past-sundays' | 'absenteeism' | 'demographics' | 'first-timers' | 'fellowship-services' | 'members' | 'raw-data';
+type AdminTab = Exclude<Permission, 'entry'>;
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',             label: 'Overview',          icon: '📊' },
@@ -25,36 +28,39 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'fellowship-services',  label: 'By Fellowship',     icon: '🏛️' },
   { id: 'members',              label: 'Member Roster',     icon: '📋' },
   { id: 'raw-data',             label: 'Raw Data',          icon: '🗃️' },
+  { id: 'welfare',              label: 'Welfare / Birthdays', icon: '🎂' },
+  { id: 'users',                label: 'Users & Roles',     icon: '🔐' },
 ];
 
 export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [sessionRole, setSessionRole] = useState('');
+  const [permissions, setPermissions] = useState<string[]>([]);
   const router = useRouter();
 
   useEffect(() => {
-    fetch('/api/auth/check', { cache: 'no-store', credentials: 'same-origin' })
+    const refreshSession = () => { fetch('/api/auth/check', { cache: 'no-store', credentials: 'same-origin' })
       .then(async res => {
         if (!res.ok) {
           router.push('/admin/login');
           return;
         }
         const session = await res.json();
-        if (!['admin', 'pastor'].includes(session.role)) {
-          const roleHomes: Record<string, string> = {
-            welfare: '/welfare',
-            first_timers: '/first-timers',
-            attendance: '/entry',
-            fellowship_leader: '/entry',
-          };
-          router.push(roleHomes[session.role] || '/admin/login');
+        const visible = tabs.filter(tab => session.permissions?.includes(tab.id));
+        if (!visible.length) {
+          router.push('/entry');
           return;
         }
+        setPermissions(session.permissions);
+        setActiveTab(previous => visible.some(tab => tab.id === previous) ? previous : visible[0].id);
         setSessionRole(session.role);
         setIsLoading(false);
       })
-      .catch(() => router.push('/admin/login'));
+      .catch(() => router.push('/admin/login')); };
+    refreshSession();
+    window.addEventListener('focus', refreshSession);
+    return () => window.removeEventListener('focus', refreshSession);
   }, [router]);
 
   const handleLogout = async () => {
@@ -91,7 +97,7 @@ export default function AdminDashboard() {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
                 <span className="text-white text-sm font-bold">A</span>
               </div>
-              <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+              <h1 className="text-xl font-bold text-gray-900">{sessionRole === 'admin' ? 'Admin Dashboard' : 'Staff Dashboard'}</h1>
             </div>
             <button
               onClick={handleLogout}
@@ -107,7 +113,7 @@ export default function AdminDashboard() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex gap-1 overflow-x-auto py-1 scrollbar-hide">
-            {tabs.map(tab => (
+            {tabs.filter(tab => permissions.includes(tab.id)).map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -129,7 +135,7 @@ export default function AdminDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {activeTab === 'overview' && (
-          <PastorDashboard onNavigate={setActiveTab} />
+          <PastorDashboard onNavigate={destination => { if (permissions.includes(destination)) setActiveTab(destination); }} allowedDestinations={permissions} />
         )}
 
         { activeTab === 'past-entry' && (
@@ -200,9 +206,12 @@ export default function AdminDashboard() {
               <h2 className="text-2xl font-bold text-gray-900">Raw Attendance Data</h2>
               <p className="text-gray-500 text-sm mt-1">Filter, search, and export all attendance records</p>
             </div>
-            <RawDataTable />
+            <RawDataTable canAdminister={sessionRole === 'admin'} />
           </div>
         )}
+
+        {activeTab === 'welfare' && permissions.includes('welfare') && <WelfareBirthdayCenter />}
+        {activeTab === 'users' && permissions.includes('users') && <AccessManagement />}
 
       </div>
     </div>

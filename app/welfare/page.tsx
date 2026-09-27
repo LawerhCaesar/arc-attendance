@@ -1,7 +1,10 @@
 import DepartmentHeader from '@/components/DepartmentHeader';
 import WelfareBirthdayCenter from '@/components/WelfareBirthdayCenter';
+import { hasPermission } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 
-export default function WelfarePage() {
+export default async function WelfarePage() {
+  if (!(await hasPermission('welfare'))) redirect('/admin');
   return (
     <div className="min-h-screen bg-gray-50">
       <DepartmentHeader

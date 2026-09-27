@@ -31,7 +31,7 @@ const designationColors: Record<string, string> = {
   'Member': 'bg-gray-100 text-gray-600',
 };
 
-export default function RawDataTable() {
+export default function RawDataTable({ canAdminister = false }: { canAdminister?: boolean }) {
   const [data, setData] = useState<AttendanceRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -159,7 +159,7 @@ export default function RawDataTable() {
           >
             ↓ Export CSV
           </button>
-          <button
+          {canAdminister && <><button
             onClick={handleCleanDuplicates}
             disabled={isCleaning}
             className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition whitespace-nowrap disabled:opacity-50"
@@ -172,7 +172,7 @@ export default function RawDataTable() {
             className="px-5 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition whitespace-nowrap disabled:opacity-50"
           >
             {isCleaning ? 'Cleaning...' : 'Fix Fellowship Names'}
-          </button>
+          </button></>}
         </div>
         
         {cleanMessage && (

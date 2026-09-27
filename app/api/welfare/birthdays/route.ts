@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthenticated } from '@/lib/auth';
+import { hasPermission } from '@/lib/auth';
 import { dateInAccra, nextBirthday } from '@/lib/birthdays';
 import { getMembers } from '@/lib/database';
 
 export async function GET(request: NextRequest) {
   try {
-    if (!(await isAuthenticated(['admin', 'pastor', 'welfare']))) {
+    if (!(await hasPermission('welfare'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

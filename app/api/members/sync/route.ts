@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncMemberFromAttendance } from '@/lib/database';
 import { getAuthContext } from '@/lib/auth';
+import { canAccess } from '@/lib/permissions';
 
 export async function POST(request: NextRequest) {
   try {
     const context = await getAuthContext();
-    if (!context || !['admin', 'pastor', 'attendance', 'fellowship_leader'].includes(context.role)) {
+    if (!context || !canAccess(context, 'members', 'entry', 'past-entry')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
