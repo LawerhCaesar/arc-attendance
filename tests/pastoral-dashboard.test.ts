@@ -85,3 +85,43 @@ test('merged history is matched by member ID and a present service ends the abse
   assert.equal(result.latestService.memberAttendanceRate, 100);
   assert.equal(result.care.absentMembers.length, 0);
 });
+
+test('period totals include both boundaries, count visits and unique people separately, and retain first-visit history', () => {
+  const members = [member({ id: 'ama', name: 'Ama' }), member({ id: 'kojo', name: 'Kojo' })];
+  const rows = [
+    attendance({ member_id: 'ama', name: 'Ama', attendanceDate: '2025-12-28', firstTimer: 'Yes' }),
+    attendance({ member_id: 'ama', name: 'Ama', attendanceDate: '2026-01-04', firstTimer: 'Yes' }),
+    attendance({ member_id: 'ama', name: 'Ama', attendanceDate: '2026-01-04' }),
+    attendance({ member_id: 'ama', name: 'Ama', attendanceDate: '2026-01-11' }),
+    attendance({ member_id: 'kojo', name: 'Kojo', attendanceDate: '2026-01-11', firstTimer: 'Yes' }),
+    attendance({ name: 'Later', phone: '0249999999', attendanceDate: '2026-01-18', firstTimer: 'Yes' }),
+  ];
+  const result = buildPastoralDashboard(rows, members, new Date('2026-01-20T12:00:00Z'), { start: '2026-01-04', end: '2026-01-11' });
+  assert.equal(result.period?.attendance, 3);
+  assert.equal(result.period?.uniquePeople, 2);
+  assert.equal(result.period?.services, 2);
+  assert.equal(result.period?.firstTimers, 1);
+  assert.equal(result.trend.reduce((sum, point) => sum + point.firstTimers, 0), result.period?.firstTimers);
+  assert.equal(result.period?.memberAttendanceRate, 100);
+  assert.deepEqual(result.trend.map(point => point.date), ['2026-01-04', '2026-01-11']);
+  assert.equal(result.fellowships[0].present, 2);
+  assert.equal(result.care.recentFirstTimers.length, 1);
+  assert.equal(result.care.recentFirstTimers[0].name, 'Kojo');
+});
+
+test('an empty selected day never falls back to an earlier service', () => {
+  const result = buildPastoralDashboard([attendance({})], [member({})], new Date('2026-09-09T12:00:00Z'), { start: '2026-09-09', end: '2026-09-09' });
+  assert.equal(result.period?.attendance, 0);
+  assert.equal(result.period?.services, 0);
+  assert.equal(result.period?.memberAttendanceRate, 0);
+  assert.equal(result.trend.length, 0);
+  assert.equal(result.fellowships[0].present, 0);
+});
+
+test('upcoming birthday total is not truncated to the number displayed', () => {
+  const members = Array.from({ length: 20 }, () => member({ birthday: '10-09' }));
+  members.push(member({ birthday: '31-09' }));
+  const result = buildPastoralDashboard([], members, new Date('2026-09-09T12:00:00Z'));
+  assert.equal(result.care.upcomingBirthdays.length, 20);
+  assert.equal(result.dataQuality.missingBirthday, 1);
+});

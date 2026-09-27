@@ -1,5 +1,7 @@
 import type { AttendanceRecord, Member } from './database';
 import { indexAttendanceByMember, normalizePhone } from './attendance-identity';
+import { dateInAccra, nextBirthday } from './birthdays';
+import type { DashboardRange } from './dashboard-period';
 
 export interface CarePerson {
   id?: string;
@@ -10,6 +12,14 @@ export interface CarePerson {
 
 export interface PastoralDashboardData {
   generatedAt: string;
+  period?: DashboardRange & {
+    attendance: number;
+    uniquePeople: number;
+    services: number;
+    averageAttendance: number;
+    memberAttendanceRate: number;
+    firstTimers: number;
+  };
   latestService: {
     date: string | null;
     attendance: number;
@@ -72,41 +82,19 @@ function daysBetween(from: string, to: string): number {
   return Math.max(0, Math.floor((end - start) / 86_400_000));
 }
 
-function parseBirthday(value: string, today: Date): { daysUntil: number; display: string } | null {
-  const clean = value.trim();
-  if (!clean) return null;
-
-  let day = 0;
-  let month = 0;
-  const iso = clean.match(/^\d{4}-(\d{1,2})-(\d{1,2})$/);
-  const dayFirst = clean.match(/^(\d{1,2})[-/](\d{1,2})(?:[-/]\d{2,4})?$/);
-  if (iso) {
-    month = Number(iso[1]);
-    day = Number(iso[2]);
-  } else if (dayFirst) {
-    day = Number(dayFirst[1]);
-    month = Number(dayFirst[2]);
-  }
-  if (!day || !month || month > 12 || day > 31) return null;
-
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  let next = new Date(today.getFullYear(), month - 1, day);
-  if (next < start) next = new Date(today.getFullYear() + 1, month - 1, day);
-  const daysUntil = Math.round((next.getTime() - start.getTime()) / 86_400_000);
-  const display = next.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  return { daysUntil, display };
-}
-
 export function buildPastoralDashboard(
   attendance: AttendanceRecord[],
   members: Member[],
-  now = new Date()
+  now = new Date(),
+  range?: DashboardRange
 ): PastoralDashboardData {
+  members = members.filter(member => member.is_active !== false);
+  const inRange = (date: string) => !range || (date >= range.start && date <= range.end);
   const attendanceForMember = indexAttendanceByMember(attendance);
   const dates = Array.from(new Set(attendance.map(serviceDate).filter(Boolean))).sort();
   const latestDate = dates.at(-1) || null;
   const previousDate = dates.at(-2) || null;
-  const recentDates = dates.slice(-8);
+  const recentDates = range ? dates.filter(inRange) : dates.slice(-8);
 
   const recordsByDate = new Map<string, AttendanceRecord[]>();
   dates.forEach(date => recordsByDate.set(date, attendance.filter(record => serviceDate(record) === date)));
@@ -125,11 +113,9 @@ export function buildPastoralDashboard(
     ? Math.round(fourWeekCounts.reduce((sum, count) => sum + count, 0) / fourWeekCounts.length)
     : 0;
 
-  const latestRecords = latestDate ? recordsByDate.get(latestDate) || [] : [];
-  const latestFirstTimerKeys = new Set(latestRecords.filter(isFirstTimer).map(personKey));
   const firstTimerHistory = new Map<string, string>();
   attendance
-    .filter(isFirstTimer)
+    .filter(record => isFirstTimer(record) && isPresent(record))
     .sort((a, b) => serviceDate(a).localeCompare(serviceDate(b)))
     .forEach(record => {
       const key = personKey(record);
@@ -178,13 +164,13 @@ export function buildPastoralDashboard(
     }];
   }).sort((a, b) => b.consecutiveAbsences - a.consecutiveAbsences).slice(0, 12);
 
-  const todayIso = now.toISOString().slice(0, 10);
+  const todayIso = dateInAccra(now);
   const recentFirstTimers = Array.from(firstTimerHistory.entries()).flatMap(([key, visitDate]) => {
     const record = attendance.find(item => personKey(item) === key && serviceDate(item) === visitDate);
     if (!record) return [];
     const daysSinceVisit = daysBetween(visitDate, todayIso);
-    if (daysSinceVisit > 28) return [];
-    const hasReturned = attendance.some(item => personKey(item) === key && isPresent(item) && serviceDate(item) > visitDate);
+    if (range ? !inRange(visitDate) : daysSinceVisit > 28) return [];
+    const hasReturned = attendance.some(item => personKey(item) === key && isPresent(item) && serviceDate(item) > visitDate && (!range || serviceDate(item) <= range.end));
     return [{
       name: record.name,
       phone: record.phone || '',
@@ -196,7 +182,7 @@ export function buildPastoralDashboard(
   }).sort((a, b) => b.visitDate.localeCompare(a.visitDate)).slice(0, 12);
 
   const upcomingBirthdays = members.flatMap(member => {
-    const birthday = parseBirthday(member.birthday || '', now);
+    const birthday = nextBirthday(member.birthday || '', todayIso);
     if (!birthday || birthday.daysUntil > 14) return [];
     return [{
       id: member.id,
@@ -206,13 +192,13 @@ export function buildPastoralDashboard(
       birthday: birthday.display,
       daysUntil: birthday.daysUntil,
     }];
-  }).sort((a, b) => a.daysUntil - b.daysUntil).slice(0, 12);
+  }).sort((a, b) => a.daysUntil - b.daysUntil);
 
   const fellowshipNames = Array.from(new Set(members.map(member => member.fellowship || 'Unassigned'))).sort();
   const fellowships = fellowshipNames.map(name => {
     const fellowshipMembers = members.filter(member => (member.fellowship || 'Unassigned') === name);
     const latestCount = fellowshipMembers.filter(member =>
-      attendanceForMember(member).some(record => serviceDate(record) === latestDate && isPresent(record))
+      attendanceForMember(member).some(record => (range ? inRange(serviceDate(record)) : serviceDate(record) === latestDate) && isPresent(record))
     ).length;
     const previousCount = fellowshipMembers.filter(member =>
       attendanceForMember(member).some(record => serviceDate(record) === previousDate && isPresent(record))
@@ -226,8 +212,21 @@ export function buildPastoralDashboard(
     };
   }).sort((a, b) => b.rate - a.rate);
 
+  const selectedPresent = attendance.filter(record => inRange(serviceDate(record)) && isPresent(record));
+  const periodAttendance = recentDates.reduce((sum, date) => sum + uniquePresent(date).size, 0);
+  const periodMembers = members.filter(member => attendanceForMember(member).some(record => inRange(serviceDate(record)) && isPresent(record))).length;
+
   return {
     generatedAt: now.toISOString(),
+    ...(range ? { period: {
+      ...range,
+      attendance: periodAttendance,
+      uniquePeople: new Set(selectedPresent.map(personKey)).size,
+      services: recentDates.length,
+      averageAttendance: recentDates.length ? Math.round(periodAttendance / recentDates.length) : 0,
+      memberAttendanceRate: members.length ? Math.round(periodMembers / members.length * 100) : 0,
+      firstTimers: Array.from(firstTimerHistory.values()).filter(inRange).length,
+    } } : {}),
     latestService: {
       date: latestDate,
       attendance: latestAttendance,
@@ -238,19 +237,19 @@ export function buildPastoralDashboard(
       fourWeekAverage,
       activeMembers: members.length,
       memberAttendanceRate: members.length ? Math.round((presentMemberCount / members.length) * 100) : 0,
-      firstTimers: latestFirstTimerKeys.size,
+      firstTimers: Array.from(firstTimerHistory.values()).filter(date => date === latestDate).length,
       returningVisitors,
     },
     trend: recentDates.map(date => ({
       date,
       attendance: uniquePresent(date).size,
-      firstTimers: new Set((recordsByDate.get(date) || []).filter(isFirstTimer).map(personKey)).size,
+      firstTimers: Array.from(firstTimerHistory.values()).filter(firstVisit => firstVisit === date).length,
     })),
     care: { absentMembers, recentFirstTimers, upcomingBirthdays },
     fellowships,
     dataQuality: {
       missingPhone: members.filter(member => !member.phone?.trim()).length,
-      missingBirthday: members.filter(member => !member.birthday?.trim()).length,
+      missingBirthday: members.filter(member => !nextBirthday(member.birthday || '', todayIso)).length,
       unassignedFellowship: members.filter(member => !member.fellowship?.trim() || member.fellowship === 'Unassigned').length,
     },
   };
