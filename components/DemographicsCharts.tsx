@@ -21,7 +21,7 @@ export default function DemographicsCharts() {
   useEffect(() => {
     fetch('/api/analytics/demographics', { cache: 'no-store' })
       .then(res => {
-        if (!res.ok) throw new Error('Unable to load demographics');
+        if (!res.ok) throw new Error('Unable to load birthday data');
         return res.json();
       })
       .then(data => {
@@ -46,7 +46,7 @@ export default function DemographicsCharts() {
   if (!data) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-8">
-        <div className="text-red-500">Failed to load demographics</div>
+        <div className="text-red-500">Failed to load birthday data</div>
       </div>
     );
   }

@@ -23,7 +23,7 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'past-entry',           label: 'Past Entry',        icon: '📅' },
   { id: 'past-sundays',         label: 'Past Sundays',      icon: '🗓️' },
   { id: 'absenteeism',          label: 'Absenteeism',       icon: '🚨' },
-  { id: 'demographics',         label: 'Demographics',      icon: '🎂' },
+  { id: 'demographics',         label: 'Birthdays',         icon: '🎂' },
   { id: 'first-timers',         label: 'First Timers',      icon: '🆕' },
   { id: 'fellowship-services',  label: 'By Fellowship',     icon: '🏛️' },
   { id: 'members',              label: 'Member Roster',     icon: '📋' },
@@ -163,7 +163,7 @@ export default function AdminDashboard() {
         {activeTab === 'demographics' && (
           <div>
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Demographics & Birthdays</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Birthdays</h2>
               <p className="text-gray-500 text-sm mt-1">Insights on attendance locations and upcoming birthdays</p>
             </div>
             <DemographicsCharts />

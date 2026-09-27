@@ -6,7 +6,7 @@ export const TAB_OPTIONS = [
   { id: 'past-entry', label: 'Past Entry', description: 'Record and correct past attendance; import roster data' },
   { id: 'past-sundays', label: 'Past Sundays', description: 'View service attendance history' },
   { id: 'absenteeism', label: 'Absenteeism', description: 'View member attendance and absence history' },
-  { id: 'demographics', label: 'Demographics', description: 'View member location and birthday summaries' },
+  { id: 'demographics', label: 'Birthdays', description: 'View member location and birthday summaries' },
   { id: 'first-timers', label: 'First Timers', description: 'View and manage visitor progression' },
   { id: 'fellowship-services', label: 'By Fellowship', description: 'View fellowship attendance reports' },
   { id: 'members', label: 'Member Roster', description: 'View, add, edit, import and remove roster members' },
