@@ -269,7 +269,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
           <div>
             <h3 id="member-export-heading" className="font-semibold text-gray-900">Export Member Data</h3>
             <p className="mt-1 text-sm text-gray-600">Download all active members you can access, including their contact details, fellowship, designation, birthday and location. Search and filters do not limit the export.</p>
-            <p className="mt-1 text-xs text-gray-600">Phone numbers beginning with +233 are exported without that prefix: +233503700378 → 503700378. Stored records are unchanged. Removed and merged-away records are excluded.</p>
+            <p className="mt-1 text-xs text-gray-600">Ghana phone numbers are exported as nine digits: 0503700378, 233503700378 and +233503700378 → 503700378. Spaces, dashes and brackets are removed. Unrecognized numbers are preserved with a review note. Stored records are unchanged. Removed and merged-away records are excluded.</p>
           </div>
           <button type="button" onClick={handleExport} disabled={isExporting} className="shrink-0 rounded-lg bg-green-700 px-5 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:opacity-50">
             {isExporting ? 'Preparing export…' : 'Export All Members (.xlsx)'}
