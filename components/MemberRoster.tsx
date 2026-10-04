@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 import MemberEditSignIn from '@/components/MemberEditSignIn';
+import { dateInAccra } from '@/lib/birthdays';
 
 interface Member {
   id: string;
@@ -43,6 +44,8 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   const [needsSignIn, setNeedsSignIn] = useState(false);
   const [signInNotice, setSignInNotice] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicateReviewVersion, setDuplicateReviewVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +60,30 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   }, []);
 
   useEffect(() => { fetchMembers(); }, [fetchMembers]);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    setExportError(null);
+    try {
+      const response = await fetch('/api/members/export', { cache: 'no-store' });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Could not export members. Please try again.');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `members-${dateInAccra()}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Could not export members. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const fellowships = [...FELLOWSHIPS, 'Unassigned'].sort();
 
@@ -236,6 +263,20 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
       )}
 
       {canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
+
+      <section aria-labelledby="member-export-heading" className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 id="member-export-heading" className="font-semibold text-gray-900">Export Member Data</h3>
+            <p className="mt-1 text-sm text-gray-600">Download all active members you can access, including their contact details, fellowship, designation, birthday and location. Search and filters do not limit the export.</p>
+            <p className="mt-1 text-xs text-gray-600">Phone numbers beginning with +233 are exported without that prefix: +233503700378 → 503700378. Stored records are unchanged. Removed and merged-away records are excluded.</p>
+          </div>
+          <button type="button" onClick={handleExport} disabled={isExporting} className="shrink-0 rounded-lg bg-green-700 px-5 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:opacity-50">
+            {isExporting ? 'Preparing export…' : 'Export All Members (.xlsx)'}
+          </button>
+        </div>
+        {exportError && <DismissibleBanner role="alert" onDismiss={() => setExportError(null)} className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{exportError}</DismissibleBanner>}
+      </section>
 
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
