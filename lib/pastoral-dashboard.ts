@@ -162,7 +162,7 @@ export function buildPastoralDashboard(
       consecutiveAbsences,
       lastSeen,
     }];
-  }).sort((a, b) => b.consecutiveAbsences - a.consecutiveAbsences).slice(0, 12);
+  }).sort((a, b) => b.consecutiveAbsences - a.consecutiveAbsences);
 
   const todayIso = dateInAccra(now);
   const recentFirstTimers = Array.from(firstTimerHistory.entries()).flatMap(([key, visitDate]) => {
@@ -179,7 +179,7 @@ export function buildPastoralDashboard(
       daysSinceVisit,
       hasReturned,
     }];
-  }).sort((a, b) => b.visitDate.localeCompare(a.visitDate)).slice(0, 12);
+  }).sort((a, b) => b.visitDate.localeCompare(a.visitDate));
 
   const upcomingBirthdays = members.flatMap(member => {
     const birthday = nextBirthday(member.birthday || '', todayIso);

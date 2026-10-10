@@ -3,6 +3,7 @@ export type BuiltinRole = typeof BUILTIN_ROLES[number];
 
 export const TAB_OPTIONS = [
   { id: 'overview', label: 'Overview', description: 'Church-wide attendance, care alerts and member insights' },
+  { id: 'care', label: 'My Follow-ups', description: 'View and update follow-ups assigned to your account; no church-wide overview access' },
   { id: 'past-entry', label: 'Past Entry', description: 'Record and correct past attendance; import roster data' },
   { id: 'past-sundays', label: 'Past Sundays', description: 'View service attendance history' },
   { id: 'absenteeism', label: 'Absenteeism', description: 'View member attendance and absence history' },

@@ -14,12 +14,14 @@ import AbsenteeismTracker from '@/components/AbsenteeismTracker';
 import PastSundaysList from '@/components/PastSundaysList';
 import AccessManagement from '@/components/AccessManagement';
 import WelfareBirthdayCenter from '@/components/WelfareBirthdayCenter';
+import PastoralWeekly from '@/components/PastoralWeekly';
 import type { Permission } from '@/lib/permissions';
 
 type AdminTab = Exclude<Permission, 'entry'>;
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',             label: 'Overview',          icon: '📊' },
+  { id: 'care',                 label: 'My Follow-ups',     icon: '✅' },
   { id: 'past-entry',           label: 'Past Entry',        icon: '📅' },
   { id: 'past-sundays',         label: 'Past Sundays',      icon: '🗓️' },
   { id: 'absenteeism',          label: 'Absenteeism',       icon: '🚨' },
@@ -137,6 +139,7 @@ export default function AdminDashboard() {
         {activeTab === 'overview' && (
           <PastorDashboard onNavigate={destination => { if (permissions.includes(destination)) setActiveTab(destination); }} allowedDestinations={permissions} />
         )}
+        {activeTab === 'care' && <PastoralWeekly assignedOnly />}
 
         { activeTab === 'past-entry' && (
           <div>

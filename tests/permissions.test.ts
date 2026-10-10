@@ -32,3 +32,11 @@ test('password policy prevents short passwords and bcrypt byte truncation', () =
   assert.throws(() => validateNewPassword('🎂'.repeat(19)));
   assert.throws(() => validateNewPassword(null));
 });
+
+test('assigned follow-ups are a separate permission from the church overview', () => {
+  assert.deepEqual(validateRolePermissions(['care']), ['care']);
+  const rep = { role: 'custom_rep', permissions: ['care'] };
+  assert.equal(canAccess(rep, 'care'), true);
+  assert.equal(canAccess(rep, 'overview'), false);
+  assert.equal(canAccess(rep, 'users'), false);
+});

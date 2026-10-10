@@ -65,6 +65,9 @@ export function reconcileFellowshipAttendance(rows: AttendanceRecord[], members:
       ...row, personId, attendanceDate: date, fellowship: fellowship(row.fellowship),
       attendanceStatus: present(row) ? 'present' : 'absent',
     });
+    const merged = reconciled.get(group)!;
+    if ((present(row) && ['yes', 'true', '1'].includes(String(row.firstTimer).toLowerCase())) ||
+      (old && present(old) && ['yes', 'true', '1'].includes(String(old.firstTimer).toLowerCase()))) merged.firstTimer = 'Yes';
   });
   return [...reconciled.values()];
 }

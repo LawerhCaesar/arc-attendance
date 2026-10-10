@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import type { PastoralDashboardData } from '@/lib/pastoral-dashboard';
 import { dashboardRange, type DashboardPeriod } from '@/lib/dashboard-period';
+import PastoralWeekly from './PastoralWeekly';
 
 type Destination = 'absenteeism' | 'demographics' | 'first-timers' | 'members';
 
@@ -174,6 +175,7 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
 
   return (
     <div className="space-y-6">
+      <PastoralWeekly />
       {periodControls}
       <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 text-white shadow-lg">
         <div className="p-6 sm:p-8 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
