@@ -127,11 +127,12 @@ export default function FellowshipServiceBreakdown() {
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-gray-600">Each person counts once per service, even when records overlap. Present takes priority over absent. Attendance visits add these service totals together—not unique people across all Sundays. Conflicting fellowship entries count once under the latest present record.</p>
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Services Recorded', value: totalServices, icon: '📅', color: 'text-blue-600' },
-          { label: 'Total Present', value: grandTotalPresent, icon: '✅', color: 'text-green-600' },
+          { label: 'Total Attendance Visits', value: grandTotalPresent, icon: '✅', color: 'text-green-600' },
           { label: 'Overall Rate', value: `${avgRate}%`, icon: '📊', color: rateColor(avgRate) },
           { label: 'Best Attendance', value: bestService ? bestService.totalPresent : '—', icon: '🏆', color: 'text-amber-600' },
         ].map((s, i) => (
@@ -273,7 +274,7 @@ export default function FellowshipServiceBreakdown() {
                 <div>
                   <h3 className="font-bold text-gray-900">{row.label}</h3>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {row.totalAttendees} records · {row.totalPresent} present
+                    {row.totalAttendees} people recorded · {row.totalPresent} present
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

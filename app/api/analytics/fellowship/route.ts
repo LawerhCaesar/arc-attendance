@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getAttendanceData } from '@/lib/database';
+import { getAttendanceData, getMembers } from '@/lib/database';
+import { reconcileFellowshipAttendance } from '@/lib/fellowship-attendance';
 import { hasPermission } from '@/lib/auth';
 
 export async function GET() {
@@ -9,7 +10,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const data = await getAttendanceData();
+    const [attendance, members] = await Promise.all([getAttendanceData({ preserveOverlaps: true }), getMembers()]);
+    const data = reconcileFellowshipAttendance(attendance, members);
 
     // Group records by fellowship
     const fellowshipMap: Record<
@@ -49,7 +51,7 @@ export async function GET() {
       const designation = record.designation || 'Member';
       f.designations[designation] = (f.designations[designation] || 0) + 1;
 
-      if (record.phone?.trim()) f.uniquePhones.add(record.phone.trim().toLowerCase());
+      f.uniquePhones.add(record.personId);
       // Use attendanceDate (the service Sunday) not date (submission timestamp)
       const serviceDate = record.attendanceDate || record.date;
       if (serviceDate) {
@@ -85,7 +87,7 @@ export async function GET() {
     > = {};
 
     cellLeaderRecords.forEach(r => {
-      const key = r.phone?.trim() || r.name.trim();
+      const key = r.personId;
       if (!clMap[key]) {
         clMap[key] = {
           name: r.name,

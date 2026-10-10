@@ -91,12 +91,13 @@ export default function FellowshipBreakdown() {
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-gray-600">Overlapping records count once per person per service. Present takes priority over absent. Attendance visits include repeat visits on different Sundays; rates use recorded present and absent attendance, not the whole roster.</p>
       {/* Summary row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Fellowships', value: data.totalFellowships, icon: '🏛️', color: 'text-blue-600' },
-          { label: 'Total Records', value: totalPresent + totalAbsent, icon: '📝', color: 'text-gray-700' },
-          { label: 'Overall Present', value: totalPresent, icon: '✅', color: 'text-green-600' },
+          { label: 'Person-Service Records', value: totalPresent + totalAbsent, icon: '📝', color: 'text-gray-700' },
+          { label: 'Attendance Visits', value: totalPresent, icon: '✅', color: 'text-green-600' },
           { label: 'Overall Rate', value: `${overallRate}%`, icon: '📊', color: rateColor(overallRate) },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">

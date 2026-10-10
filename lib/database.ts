@@ -113,14 +113,14 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
 }
 
 /** Get all attendance records from the database */
-export async function getAttendanceData(): Promise<AttendanceRecord[]> {
+export async function getAttendanceData(options: { preserveOverlaps?: boolean } = {}): Promise<AttendanceRecord[]> {
   const data = await fetchAllRows<AttendanceRecord>((from, to) => supabase
     .from(TABLE_NAME)
     .select('*')
     .order('date', { ascending: false })
     .order('createdAt', { ascending: false }).order('id').range(from, to));
 
-  return consolidateLinkedAttendance(data).map(record => ({
+  return (options.preserveOverlaps ? data : consolidateLinkedAttendance(data)).map(record => ({
     ...record,
     designation: record.designation || 'Member',
     createdAt: record.createdAt ? new Date(record.createdAt) : undefined,

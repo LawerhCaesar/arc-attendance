@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getAttendanceData } from '@/lib/database';
+import { getAttendanceData, getMembers } from '@/lib/database';
+import { reconcileFellowshipAttendance } from '@/lib/fellowship-attendance';
 import { hasPermission } from '@/lib/auth';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 
@@ -10,7 +11,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const data = await getAttendanceData();
+    const [attendance, members] = await Promise.all([getAttendanceData({ preserveOverlaps: true }), getMembers()]);
+    const data = reconcileFellowshipAttendance(attendance, members);
 
     // Build a map: serviceDate -> fellowship -> { present, total }
     const serviceMap: Record<
