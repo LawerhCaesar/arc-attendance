@@ -63,6 +63,8 @@ test('only the configured base admin qualifies for fellowship account administra
   assert.equal(isSuperAdmin({ username: 'base', role: 'admin', accountId: 'managed-id' }, 'base'), false);
   assert.equal(isSuperAdmin({ username: 'another-admin', role: 'admin' }, 'base'), false);
   assert.equal(isSuperAdmin({ username: 'base', role: 'fellowship_leader' }, 'base'), false);
+  assert.equal(isSuperAdmin({ username: 'renamed-base', role: 'admin', accountId: 'managed-id', configuredUsername: 'base' }, 'base'), true);
+  assert.equal(isSuperAdmin({ username: 'renamed-base', role: 'pastor', accountId: 'managed-id', configuredUsername: 'base' }, 'base'), false);
   assert.equal(isSuperAdmin(null, 'base'), false);
   assert.equal(isSuperAdmin({ username: 'base', role: 'admin' }, ''), false);
 });

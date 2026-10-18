@@ -191,9 +191,11 @@ Permissions apply to every account in the role immediately.
 
 The base administrator can save an existing configured staff login into managed
 accounts. Its old environment identity is then retired, including after a rename
-or deactivation; authentication never falls back to those credentials. Only the
-base recovery login remains controlled by hosting configuration. The service
-role key is required for all other staff authentication. Username changes and
+or deactivation; authentication never falls back to those credentials. The base
+administrator can update its own credentials in My profile while
+retaining its immutable base identity and full privileges. Its original configured
+credentials are retired after its first profile save. The service
+role key is required for staff authentication. Username changes and
 password resets revoke existing managed sessions.
 
 Fellowship leaders land on **Member Roster**, scoped to their assigned fellowship.
@@ -212,17 +214,20 @@ the migrations and roll back their fixtures.
 
 Apply the account email migration and
 `supabase/migrations/20261018140319_staff_self_service_email.sql` before deploying
-self-service account settings. Every signed-in staff member can open **My account**
-from the sidebar or top navigation and save their own email by confirming their
-current password. The base recovery administrator can use this too; its password
-and full recovery access remain controlled by hosting configuration.
+self-service account settings. Every signed-in staff member can open **My profile**
+from the sidebar or top navigation and change their own username, email and
+password by confirming their current password. Password changes require matching
+confirmation and at least 12 characters (at most 72 UTF-8 bytes). The base
+administrator can use this too, retaining full privileges after a rename.
+Other administrators cannot edit the base administrator account.
 
 Staff can sign in with their saved email or username and the same password.
 Emails are normalized and unique across managed and configured accounts.
 **Users & Roles → Edit account** remains available for administrators. An email
 is optional when creating any account, including fellowship leaders. Accounts
-join birthday reminders automatically once an email is saved. Managed email
-changes revoke other sessions while keeping the device saving its profile signed in.
+join birthday reminders automatically once an email is saved. Managed email,
+username and password changes revoke other sessions while keeping the device
+saving its profile signed in.
 
 The daily cron runs at **08:00 Africa/Accra**, seven days and one day before
 birthdays. Active fellowship leaders receive reminders for their own fellowship;
@@ -235,6 +240,6 @@ delivery history and provider idempotency keys preventing duplicate sends.
 Production needs `RESEND_API_KEY`, a verified sender in `BIRTHDAY_REMINDER_FROM`
 (for example, `ARC Attendance <birthdays@your-verified-domain>`), `CRON_SECRET`,
 and `SUPABASE_SERVICE_ROLE_KEY`. Store keys only in Vercel's server environment.
-My account and Users & Roles show whether email delivery is configured. Sending stays unavailable until the provider and verified sender are
+My profile and Users & Roles show whether email delivery is configured. Sending stays unavailable until the provider and verified sender are
 configured; no reminders are sent during tests.
 

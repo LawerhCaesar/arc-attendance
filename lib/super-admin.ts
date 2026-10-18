@@ -1,9 +1,10 @@
-interface AdminIdentity { username: string; role: string; accountId?: string }
+interface AdminIdentity { username: string; role: string; accountId?: string; configuredUsername?: string }
 
-/** The recovery login configured as ADMIN_USERNAME is the base administrator. */
+/** ADMIN_USERNAME identifies the base administrator, including after a profile rename. */
 export function isSuperAdmin(context: AdminIdentity | null, baseUsername = process.env.ADMIN_USERNAME): boolean {
-  return Boolean(context && context.role === 'admin' && !context.accountId && baseUsername &&
-    context.username.toLowerCase() === baseUsername.toLowerCase());
+  const identity = context?.accountId ? context.configuredUsername : context?.username;
+  return Boolean(context && context.role === 'admin' && baseUsername && identity &&
+    identity.toLowerCase() === baseUsername.toLowerCase());
 }
 
 export function fellowshipLeaderUsername(name: string, memberId: string): string {

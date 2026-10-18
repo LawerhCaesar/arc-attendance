@@ -1,8 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AuthContext } from './auth';
+import { hashPassword, type AuthContext } from './auth';
 import { configuredUsers } from './configured-users';
 import { fetchAllRows } from './pagination';
 import { validateAccountEmail } from './account-email';
+import { validateUsername } from './access-management';
+import { DEFAULT_PERMISSIONS, validateNewPassword } from './permissions';
+import { isSuperAdmin } from './super-admin';
+
+export class ProfileConflictError extends Error {}
+export interface ProfileChanges { email?: unknown; username?: unknown; newPassword?: unknown; confirmNewPassword?: unknown }
+
+export function validateProfileChanges(changes: ProfileChanges) {
+  if (changes.newPassword !== undefined && typeof changes.newPassword !== 'string') throw new Error('Enter a valid new password.');
+  const newPassword = changes.newPassword ? validateNewPassword(changes.newPassword) : undefined;
+  if (newPassword && changes.confirmNewPassword !== newPassword) throw new Error('The new passwords do not match.');
+  return { username: changes.username === undefined ? undefined : validateUsername(changes.username),
+    email: changes.email === undefined ? undefined : validateAccountEmail(changes.email), newPassword };
+}
 
 /** Saved profile settings override optional environment email aliases. */
 export async function configuredUsersWithEmail(admin: SupabaseClient) {
@@ -49,4 +63,53 @@ export async function saveOwnAccountEmail(admin: SupabaseClient, context: AuthCo
   }, { onConflict: 'configured_username' });
   if (error) throw error;
   return { email, sessionVersion: undefined };
+}
+
+/** Changes only the signed-in account; role, status and fellowship are never accepted from input. */
+export async function saveOwnAccountProfile(admin: SupabaseClient, context: AuthContext, changes: ProfileChanges) {
+  const fields = validateProfileChanges(changes);
+  const configured = await configuredUsersWithEmail(admin);
+  let source = context.configuredUsername || (context.accountId ? null : context.username.toLowerCase());
+  let existing: { username: string; email: string | null; configured_username: string | null } | null = null;
+  if (context.accountId) {
+    const result = await admin.from('staff_accounts').select('username,email,configured_username').eq('id', context.accountId).single();
+    if (result.error) throw result.error;
+    existing = result.data;
+    source = existing!.configured_username;
+  }
+  const ownConfigured = configured.find(user => user.username.toLowerCase() === source);
+  const username = fields.username ?? context.username;
+  const email = fields.email === undefined ? (existing ? existing.email : ownConfigured?.email ?? null) : fields.email;
+  if (configuredUsers().some(user => user.username.toLowerCase() === username.toLowerCase() && user.username.toLowerCase() !== source)) {
+    throw new Error('This username is already assigned to another account.');
+  }
+  if (email && configured.some(user => (user.email === email || user.username.toLowerCase() === email) && user.username.toLowerCase() !== source)) {
+    throw new Error('This email is already assigned to another account.');
+  }
+  let account: { id: string; username: string; email: string | null; session_version: number; configured_username: string | null };
+  if (context.accountId) {
+    const record = { username, email, ...(fields.newPassword ? { password_hash: await hashPassword(fields.newPassword) } : {}) };
+    const result = await admin.from('staff_accounts').update(record).eq('id', context.accountId)
+      .eq('session_version', context.sessionVersion).eq('is_active', true)
+      .select('id,username,email,session_version,configured_username').maybeSingle();
+    if (result.error) throw result.error;
+    if (!result.data) throw new ProfileConflictError('Your account changed during this update. Sign in again and retry.');
+    account = result.data;
+  } else {
+    if (!ownConfigured) throw new Error('Account no longer exists.');
+    const role = await admin.from('staff_roles').select('id').eq('key', context.role).single();
+    if (role.error) throw role.error;
+    const password = fields.newPassword || ownConfigured.password;
+    const result = await admin.from('staff_accounts').insert({
+      username, email, display_name: ownConfigured.username, role_id: role.data.id, fellowship: context.fellowship || null,
+      is_active: true, configured_username: ownConfigured.username.toLowerCase(),
+      password_hash: !fields.newPassword && /^\$2[aby]\$/.test(password) ? password : await hashPassword(password),
+    }).select('id,username,email,session_version,configured_username').single();
+    if (result.error) throw result.error;
+    account = result.data;
+  }
+  const updatedContext: AuthContext = { ...context, username: account.username, accountId: account.id,
+    configuredUsername: account.configured_username || undefined, sessionVersion: account.session_version };
+  if (isSuperAdmin(updatedContext)) updatedContext.permissions = DEFAULT_PERMISSIONS.admin;
+  return { username: account.username, email: account.email, context: updatedContext };
 }

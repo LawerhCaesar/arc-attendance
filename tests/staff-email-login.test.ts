@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { before, afterEach } from 'node:test';
+import { DEFAULT_PERMISSIONS } from '../lib/permissions';
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://email-auth-tests.supabase.co';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon';
@@ -51,9 +52,27 @@ test('configured email sign-in is retired by a managed override, including disab
   assert.equal(await login.authenticateStaffLogin('configured@example.com', 'configured-password'), null);
 });
 
-test('the configured base admin can use its email, with username recovery independent of the database', async () => {
+test('base admin username and email stop working after its managed profile replaces the configured login', async () => {
   fixture();
   assert.equal((await login.authenticateStaffLogin(' BASE@EXAMPLE.COM ', 'recovery-password'))?.username, 'base-admin');
-  globalThis.fetch = async () => { throw new Error('Recovery must not query the database'); };
   assert.equal((await login.authenticateStaffLogin('base-admin', 'recovery-password'))?.username, 'base-admin');
+  fixture(true, true);
+  assert.equal(await login.authenticateStaffLogin('base-admin', 'recovery-password'), null);
+  assert.equal(await login.authenticateStaffLogin('base@example.com', 'recovery-password'), null);
+  globalThis.fetch = async () => { throw new Error('Unavailable'); };
+  await assert.rejects(login.authenticateStaffLogin('base-admin', 'recovery-password'));
+});
+
+test('renamed managed base administrator retains full permissions from its immutable identity', async () => {
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const rows = url.pathname.endsWith('/staff_accounts')
+      ? [{ ...account, username: 'renamed-base', configured_username: 'base-admin' }]
+      : [{ key: 'admin', permissions: ['users'] }];
+    const singular = new Headers(init?.headers).get('Accept')?.includes('vnd.pgrst.object');
+    return new Response(JSON.stringify(singular ? rows[0] : rows), { headers: { 'Content-Type': 'application/json' } });
+  };
+  const context = await login.authenticateStaffLogin('renamed-base', 'fixture-password');
+  assert.equal(context?.configuredUsername, 'base-admin');
+  assert.deepEqual(context?.permissions, DEFAULT_PERMISSIONS.admin);
 });

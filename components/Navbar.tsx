@@ -11,7 +11,7 @@ export default function Navbar() {
             </Link>
           </div>
           <div className="flex items-center space-x-4">
-            <Link href="/account" className="rounded-md px-3 py-2 text-sm font-medium transition hover:bg-gray-700">My account</Link>
+            <Link href="/account" className="rounded-md px-3 py-2 text-sm font-medium transition hover:bg-gray-700">My profile</Link>
             <Link
               href="/entry"
               className="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition"

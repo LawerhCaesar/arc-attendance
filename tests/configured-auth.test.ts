@@ -12,11 +12,11 @@ before(async () => { auth = await import('../lib/auth'); });
 afterEach(() => { globalThis.fetch = originalFetch; });
 const staff = { username: 'configured-pastor', password: 'old-password', role: 'pastor' as const };
 
-const fixture = (hasOverride: boolean) => {
+const fixture = (hasOverride: boolean, username = 'configured-pastor') => {
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
     const accountRequest = url.pathname.endsWith('/staff_accounts');
-    if (accountRequest) assert.equal(url.searchParams.get('configured_username'), 'eq.configured-pastor');
+    if (accountRequest) assert.equal(url.searchParams.get('configured_username'), `eq.${username}`);
     const rows = accountRequest ? hasOverride ? [{ id: 'managed-override', is_active: false }] : [] : [{ permissions: ['members'] }];
     const singular = new Headers(init?.headers).get('Accept')?.includes('vnd.pgrst.object');
     return new Response(JSON.stringify(singular ? rows[0] : rows), { headers: { 'Content-Type': 'application/json' } });
@@ -39,8 +39,12 @@ test('account service failures never restore old configured credentials', async 
   await assert.rejects(auth.configuredAuthContext(staff));
 });
 
-test('the base administrator remains available as the recovery login', async () => {
-  globalThis.fetch = async () => { throw new Error('Recovery must not require database access'); };
-  const context = await auth.configuredAuthContext({ username: 'test-base-admin', password: 'recovery', role: 'admin' });
-  assert.deepEqual(context?.permissions, DEFAULT_PERMISSIONS.admin);
+test('the base administrator retains full access until its configured credentials are retired', async () => {
+  const base = { username: 'test-base-admin', password: 'recovery', role: 'admin' as const };
+  fixture(false, base.username);
+  assert.deepEqual((await auth.configuredAuthContext(base))?.permissions, DEFAULT_PERMISSIONS.admin);
+  fixture(true, base.username);
+  assert.equal(await auth.configuredAuthContext(base), null);
+  globalThis.fetch = async () => { throw new Error('Unavailable'); };
+  await assert.rejects(auth.configuredAuthContext(base));
 });

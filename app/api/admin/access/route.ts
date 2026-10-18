@@ -40,7 +40,10 @@ export async function GET() {
       configuredUsersWithEmail(admin),
     ]);
     const overridden = new Set(accounts.map(account => account.configured_username));
-    return NextResponse.json({ accounts, roles, fellowshipLeaders, birthdayEmailReady: Boolean(process.env.RESEND_API_KEY && process.env.BIRTHDAY_REMINDER_FROM),
+    return NextResponse.json({ accounts: accounts.map(account => ({ ...account, isBaseAdmin: isSuperAdmin({
+      username: account.username, accountId: account.id, configuredUsername: account.configured_username || undefined,
+      role: roles.find(role => role.id === account.role_id)?.key || '',
+    }) })), roles, fellowshipLeaders, birthdayEmailReady: Boolean(process.env.RESEND_API_KEY && process.env.BIRTHDAY_REMINDER_FROM),
       canManageFellowshipLeaders: isSuperAdmin(context), canEditSystemRoles: isSuperAdmin(context), canManageConfiguredAccounts: isSuperAdmin(context),
       currentAccountId: context?.accountId || null,
       configuredAccounts: configured.filter(user => !overridden.has(user.username.toLowerCase()))
@@ -94,6 +97,10 @@ async function save(request: NextRequest, editing: boolean) {
       if (!existing) throw new Error('Account not found.');
       const previousRole = await admin.from('staff_roles').select('key').eq('id', existing.role_id).single();
       if (previousRole.error) throw previousRole.error;
+      if (isSuperAdmin({ username: existing.username, accountId: existing.id,
+        configuredUsername: existing.configured_username || undefined, role: previousRole.data.key }) && !isSuperAdmin(context)) {
+        return forbidden('Only the base administrator can change the base administrator account.');
+      }
       if (previousRole.data.key === 'fellowship_leader' && !isSuperAdmin(context)) return forbidden('Only the base administrator can create or manage fellowship leader accounts.');
       if (context?.accountId === body.id && (!body.is_active || role.key !== 'admin')) throw new Error('You cannot remove your own administrator access.');
     }
@@ -101,7 +108,7 @@ async function save(request: NextRequest, editing: boolean) {
     const source = !editing && typeof body.configuredUsername === 'string'
       ? configured.find(user => user.username.toLowerCase() === body.configuredUsername.toLowerCase()) : undefined;
     if (body.configuredUsername && !source) throw new Error('Configured account not found. Refresh and try again.');
-    if (source && (!isSuperAdmin(context) || isSuperAdmin(source))) return forbidden('Only the base administrator can manage configured staff logins. Base administrator credentials remain in hosting configuration.');
+    if (source && (!isSuperAdmin(context) || isSuperAdmin(source))) return forbidden('Only the base administrator can manage configured staff logins. Use My profile to change your own base administrator credentials.');
 
     // Legacy clients may omit username on an edit; preserve it in that case.
     const username = validateUsername(body.username ?? existing?.username);

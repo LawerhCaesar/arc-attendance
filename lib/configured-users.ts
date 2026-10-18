@@ -3,8 +3,8 @@ import { validateAccountEmail } from './account-email';
 
 export interface ConfiguredUser { username: string; password: string; role: BuiltinRole; fellowship?: string; email?: string }
 
-// Existing environment accounts remain available as a recovery path and cannot
-// be shadowed by a database account with the same username.
+// Configured identities reserve their usernames. Once saved as managed accounts,
+// their original credentials are retired by configuredAuthContext.
 export function configuredUsers(): ConfiguredUser[] {
   const users: ConfiguredUser[] = [];
   if (process.env.APP_USERS_JSON) {

@@ -18,6 +18,7 @@ export interface AuthContext {
   fellowship?: string;
   permissions: Permission[];
   accountId?: string;
+  configuredUsername?: string;
   sessionVersion?: number;
 }
 
@@ -106,13 +107,13 @@ export async function getSession(): Promise<string | null> {
 /** A managed override retires the original environment login, even if disabled. */
 export async function configuredAuthContext(configured: ConfiguredUser): Promise<AuthContext | null> {
   const context: AuthContext = { username: configured.username, role: configured.role, fellowship: configured.fellowship, permissions: DEFAULT_PERMISSIONS[configured.role] };
-  if (isSuperAdmin(context)) return context;
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error('Staff account service unavailable.');
   const { data: override, error } = await admin.from('staff_accounts').select('id')
     .eq('configured_username', configured.username.toLowerCase()).maybeSingle();
   if (error) throw error;
   if (override) return null;
+  if (isSuperAdmin(context)) return context;
   const { data: role, error: roleError } = await admin.from('staff_roles').select('permissions').eq('key', configured.role).single();
   if (roleError) throw roleError;
   return { ...context, permissions: role.permissions };
@@ -129,12 +130,15 @@ export async function getAuthContext(): Promise<AuthContext | null> {
     const admin = getSupabaseAdmin();
     if (!admin) return null;
     const { data: account, error } = await admin.from('staff_accounts')
-      .select('id, username, role_id, fellowship, is_active, session_version')
+      .select('id, username, role_id, fellowship, is_active, session_version, configured_username')
       .eq('id', payload.accountId).maybeSingle();
     if (error || !account?.is_active || account.session_version !== payload.sessionVersion) return null;
     const { data: role, error: roleError } = await admin.from('staff_roles').select('key, permissions').eq('id', account.role_id).single();
     if (roleError || !role) return null;
-    return { username: account.username, role: role.key, permissions: role.permissions, fellowship: account.fellowship || undefined, accountId: account.id, sessionVersion: account.session_version };
+    const context: AuthContext = { username: account.username, role: role.key, permissions: role.permissions, fellowship: account.fellowship || undefined,
+      accountId: account.id, configuredUsername: account.configured_username || undefined, sessionVersion: account.session_version };
+    if (isSuperAdmin(context)) context.permissions = DEFAULT_PERMISSIONS.admin;
+    return context;
   }
   const configured = configuredUsers().find(user => user.username === payload.username);
   if (!configured) return null;

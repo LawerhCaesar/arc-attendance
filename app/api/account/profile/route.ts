@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSession, getAuthContext } from '@/lib/auth';
 import { authenticateStaffLogin } from '@/lib/staff-login';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { ownAccountProfile, saveOwnAccountEmail } from '@/lib/account-profile';
+import { ownAccountProfile, saveOwnAccountProfile, ProfileConflictError } from '@/lib/account-profile';
 import { homeForPermissions } from '@/lib/permissions';
 
 function failure(error: unknown) {
-  if ((error as { code?: string }).code === '23505') return NextResponse.json({ error: 'This email is already assigned to another account.' }, { status: 409 });
+  if ((error as { code?: string }).code === '23505') return NextResponse.json({ error: 'This username or email is already assigned to another account.' }, { status: 409 });
+  if (error instanceof ProfileConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
   if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ error: 'Your account settings could not be saved. Please try again.' }, { status: 503 });
 }
@@ -31,16 +32,16 @@ export async function PATCH(request: NextRequest) {
   if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: 'Cross-site changes are not allowed.' }, { status: 403 });
   try {
     const body = await request.json();
-    if (!body || typeof body.password !== 'string' || body.password.length > 256) return NextResponse.json({ error: 'Enter your current password to save your email.' }, { status: 400 });
+    if (!body || typeof body.password !== 'string' || body.password.length > 256) return NextResponse.json({ error: 'Enter your current password to save profile changes.' }, { status: 400 });
     const verified = await authenticateStaffLogin(context.username, body.password);
     if (!verified || verified.username !== context.username || verified.accountId !== context.accountId) {
       return NextResponse.json({ error: 'Your current password is incorrect.' }, { status: 403 });
     }
     const admin = getSupabaseAdmin();
     if (!admin) return NextResponse.json({ error: 'Account settings are unavailable.' }, { status: 503 });
-    const saved = await saveOwnAccountEmail(admin, context, body.email);
-    // Keep this device signed in; other managed sessions are revoked by SQL.
-    if (context.accountId) await createSession({ ...verified, sessionVersion: saved.sessionVersion });
-    return NextResponse.json({ email: saved.email, message: 'Your email was saved. You can now use it to sign in.' });
+    const saved = await saveOwnAccountProfile(admin, verified, { email: body.email, username: body.username,
+      newPassword: body.newPassword, confirmNewPassword: body.confirmNewPassword });
+    await createSession(saved.context);
+    return NextResponse.json({ username: saved.username, email: saved.email, message: 'Your profile was updated. Use your saved username or email and password to sign in.' });
   } catch (error) { return failure(error); }
 }
