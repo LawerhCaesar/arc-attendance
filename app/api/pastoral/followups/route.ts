@@ -6,18 +6,22 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { fetchAllRows } from '@/lib/pagination';
 import { validateCareUpdate, type CareTask } from '@/lib/care-followups';
 import { loadPastoralInsights } from '@/lib/pastoral-source';
+import { isSuperAdmin } from '@/lib/super-admin';
 export const dynamic = 'force-dynamic';
 const uuid = /^[0-9a-f-]{36}$/i;
 async function owners(context: AuthContext) {
   const admin = getSupabaseAdmin();
   if (!admin) throw new Error('Care follow-ups require server configuration.');
-  const accounts = await fetchAllRows<{ username: string; display_name: string; fellowship: string | null; role: { permissions: string[] } | { permissions: string[] }[] }>((from, to) => admin.from('staff_accounts')
-    .select('username,display_name,fellowship,role:staff_roles(permissions)').eq('is_active', true).order('username').range(from, to));
+  type JoinedRole = { key: string; permissions: string[] };
+  const accounts = await fetchAllRows<{ id: string; username: string; display_name: string; fellowship: string | null; configured_username: string | null; is_active: boolean; role: JoinedRole | JoinedRole[] }>((from, to) => admin.from('staff_accounts')
+    .select('id,username,display_name,fellowship,configured_username,is_active,role:staff_roles(key,permissions)').order('username').range(from, to));
+  const overridden = new Set(accounts.map(account => account.configured_username));
   const permitted = accounts.filter(account => {
     const role = Array.isArray(account.role) ? account.role[0] : account.role;
-    return (role?.permissions.includes('overview') || role?.permissions.includes('care')) && (!account.fellowship || account.fellowship === context.fellowship || context.role !== 'fellowship_leader');
+    const base = isSuperAdmin({ username: account.username, role: role?.key || '', accountId: account.id, configuredUsername: account.configured_username || undefined });
+    return account.is_active && (base || role?.permissions.includes('overview') || role?.permissions.includes('care')) && (!account.fellowship || account.fellowship === context.fellowship || context.role !== 'fellowship_leader');
   }).map(account => ({ username: account.username, label: account.display_name, fellowship: account.fellowship }));
-  const result = [...permitted, ...configuredUsers().filter(user => DEFAULT_PERMISSIONS[user.role].some(permission => permission === 'overview' || permission === 'care')).map(user => ({ username: user.username, label: user.username, fellowship: user.fellowship || null }))];
+  const result = [...permitted, ...configuredUsers().filter(user => !overridden.has(user.username.toLowerCase()) && DEFAULT_PERMISSIONS[user.role].some(permission => permission === 'overview' || permission === 'care')).map(user => ({ username: user.username, label: user.username, fellowship: user.fellowship || null }))];
   return canAccess(context, 'overview') ? result : result.filter(owner => owner.username === context.username);
 }
 const unavailable = () => NextResponse.json({ error: 'Follow-ups are unavailable. Check server configuration and apply the pastoral follow-ups migration.' }, { status: 503 });

@@ -229,6 +229,10 @@ join birthday reminders automatically once an email is saved. Managed email,
 username and password changes revoke other sessions while keeping the device
 saving its profile signed in.
 
+Apply `supabase/migrations/20261018163411_preserve_profile_followup_ownership.sql`
+to preserve follow-up assignments atomically when a managed or configured account
+changes username. Historical audit entries keep the names recorded at the time.
+
 The daily cron runs at **08:00 Africa/Accra**, seven days and one day before
 birthdays. Active fellowship leaders receive reminders for their own fellowship;
 active administrators, including the base administrator, receive reminders for
