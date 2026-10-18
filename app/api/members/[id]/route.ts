@@ -1,74 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateMember, deleteMember } from '@/lib/database';
-import { getAuthContext } from '@/lib/auth';
-import { canAccess } from '@/lib/permissions';
+import { getMember, updateMember, deleteMember } from '@/lib/database';
+import { memberApiFailure, requireMemberAccess } from '@/lib/member-api';
+import { MemberInputError, memberFellowshipScope, memberUuid, parseMemberInput } from '@/lib/member-scope';
 
-async function checkEditAccess() {
-  const context = await getAuthContext();
-  if (!context) {
-    return NextResponse.json({ error: 'Your session has ended. Sign in again to save your changes.', code: 'SESSION_REQUIRED' }, { status: 401 });
-  }
-  if (!canAccess(context, 'members')) {
-    return NextResponse.json({ error: 'Your role does not have Member Roster access.', code: 'ROLE_FORBIDDEN' }, { status: 403 });
-  }
-  return null;
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const context = await requireMemberAccess();
+    const { id } = await params;
+    if (!memberUuid.test(id)) throw new MemberInputError('Select a valid roster member.');
+    const scope = memberFellowshipScope(context);
+    const member = await getMember(id, scope);
+    if (!member) return NextResponse.json({ error: 'Member not found in your roster.' }, { status: 404 });
+    return NextResponse.json({ member, fellowshipScope: scope || null }, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch (error) { return memberApiFailure(error); }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const accessError = await checkEditAccess();
-    if (accessError) return accessError;
-
+    const context = await requireMemberAccess();
     const { id } = await params;
-    const body = await request.json();
-    const { name, phone, fellowship, designation, birthday, location } = body;
-
-    if (!name || !fellowship || !designation) {
-      return NextResponse.json(
-        { error: 'Name, fellowship, and designation are required' },
-        { status: 400 }
-      );
-    }
-
-    const member = await updateMember(id, {
-      name: name.trim(),
-      phone: (phone || '').trim(),
-      fellowship: fellowship.trim(),
-      designation: designation.trim(),
-      birthday: (birthday || '').trim(),
-      location: (location || '').trim(),
-    });
-
+    const member = await updateMember(id, parseMemberInput(await request.json(), context), memberFellowshipScope(context));
+    if (!member) return NextResponse.json({ error: 'Member not found in your roster.' }, { status: 404 });
     return NextResponse.json(member);
-  } catch (error: any) {
-    console.error('Error updating member:', error);
-    return NextResponse.json(
-      { error: 'Failed to update member' },
-      { status: 500 }
-    );
-  }
+  } catch (error) { return memberApiFailure(error); }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const accessError = await checkEditAccess();
-    if (accessError) return accessError;
-
+    const context = await requireMemberAccess();
     const { id } = await params;
-    await deleteMember(id);
-
+    if (!await deleteMember(id, memberFellowshipScope(context))) {
+      return NextResponse.json({ error: 'Member not found in your roster.' }, { status: 404 });
+    }
     return NextResponse.json({ message: 'Member removed successfully' });
-  } catch (error: any) {
-    console.error('Error deleting member:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete member' },
-      { status: 500 }
-    );
-  }
+  } catch (error) { return memberApiFailure(error); }
 }

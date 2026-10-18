@@ -2,7 +2,8 @@ import { cookies } from 'next/headers';
 import { createHmac, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getSupabaseAdmin } from './supabase-admin';
-import { configuredUsers } from './configured-users';
+import { configuredUsers, type ConfiguredUser } from './configured-users';
+import { isSuperAdmin } from './super-admin';
 import { BUILTIN_ROLES, DEFAULT_PERMISSIONS, canAccess, type Permission } from './permissions';
 
 const SESSION_COOKIE_NAME = 'admin_session';
@@ -23,7 +24,7 @@ export interface AuthContext {
 export function homeForRole(role: AppRole): string {
   if (role === 'welfare') return '/welfare';
   if (role === 'first_timers') return '/first-timers';
-  if (role === 'attendance' || role === 'fellowship_leader') return '/entry';
+  if (role === 'attendance') return '/entry';
   return '/admin';
 }
 
@@ -68,7 +69,7 @@ function decodeSession(token: string): SessionPayload | null {
 }
 
 export async function verifyPassword(password: string, storedPassword: string): Promise<boolean> {
-  if (storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$')) {
+  if (/^\$2[aby]\$/.test(storedPassword)) {
     return bcrypt.compare(password, storedPassword);
   }
   return password === storedPassword;
@@ -102,6 +103,21 @@ export async function getSession(): Promise<string | null> {
   return cookieStore.get(SESSION_COOKIE_NAME)?.value || null;
 }
 
+/** A managed override retires the original environment login, even if disabled. */
+export async function configuredAuthContext(configured: ConfiguredUser): Promise<AuthContext | null> {
+  const context: AuthContext = { username: configured.username, role: configured.role, fellowship: configured.fellowship, permissions: DEFAULT_PERMISSIONS[configured.role] };
+  if (isSuperAdmin(context)) return context;
+  const admin = getSupabaseAdmin();
+  if (!admin) throw new Error('Staff account service unavailable.');
+  const { data: override, error } = await admin.from('staff_accounts').select('id')
+    .eq('configured_username', configured.username.toLowerCase()).maybeSingle();
+  if (error) throw error;
+  if (override) return null;
+  const { data: role, error: roleError } = await admin.from('staff_roles').select('permissions').eq('key', configured.role).single();
+  if (roleError) throw roleError;
+  return { ...context, permissions: role.permissions };
+}
+
 export async function getAuthContext(): Promise<AuthContext | null> {
   const session = await getSession();
   if (!session) return null;
@@ -122,12 +138,7 @@ export async function getAuthContext(): Promise<AuthContext | null> {
   }
   const configured = configuredUsers().find(user => user.username === payload.username);
   if (!configured) return null;
-  return {
-    username: configured.username,
-    role: configured.role,
-    fellowship: configured.fellowship,
-    permissions: DEFAULT_PERMISSIONS[configured.role],
-  };
+  try { return await configuredAuthContext(configured); } catch { return null; }
 }
 
 export async function deleteSession(): Promise<void> {

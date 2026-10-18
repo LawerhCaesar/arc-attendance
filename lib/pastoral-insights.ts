@@ -6,6 +6,14 @@ export interface CareSuggestion {
   personRef: string; name: string; phone: string; fellowship: string;
   category: 'absence' | 'visitor' | 'birthday'; reason: string;
 }
+
+export function memberInformationIssues(member: Pick<Member, 'phone' | 'birthday' | 'fellowship'>, today = dateInAccra()): string[] {
+  return [
+    ...(!member.phone?.trim() ? ['Missing phone'] : []),
+    ...(!nextBirthday(member.birthday || '', today) ? ['Missing / invalid birthday'] : []),
+    ...(!member.fellowship?.trim() || member.fellowship === 'Unassigned' ? ['Unassigned fellowship'] : []),
+  ];
+}
 export function buildPastoralInsights(attendance: AttendanceRecord[], members: Member[], now = new Date()) {
   const today = dateInAccra(now);
   const shift = (day: string, count: number) => {
@@ -74,12 +82,8 @@ export function buildPastoralInsights(attendance: AttendanceRecord[], members: M
     timelines: Object.fromEntries(suggestions.map(person => [person.personRef, rows.filter(row => row.personId === person.personRef)
       .sort((a, b) => b.attendanceDate!.localeCompare(a.attendanceDate!)).slice(0, 12)
       .map(row => ({ date: row.attendanceDate!, status: row.attendanceStatus!, fellowship: row.fellowship }))])),
-    dataQuality: active.filter(member => !member.phone?.trim() || !nextBirthday(member.birthday, today) || !member.fellowship?.trim() || member.fellowship === 'Unassigned')
-      .map(member => ({ id: member.id, name: member.name, fellowship: member.fellowship, issues: [
-        ...(!member.phone?.trim() ? ['Missing phone'] : []),
-        ...(!nextBirthday(member.birthday, today) ? ['Missing / invalid birthday'] : []),
-        ...(!member.fellowship?.trim() || member.fellowship === 'Unassigned' ? ['Unassigned fellowship'] : []),
-      ] })),
+    dataQuality: active.map(member => ({ id: member.id, name: member.name, fellowship: member.fellowship, issues: memberInformationIssues(member, today) }))
+      .filter(member => member.issues.length > 0),
     trend: dates.slice(-8).map(date => ({ date, attendance: presentRows.filter(row => row.attendanceDate === date).length })),
   };
 }

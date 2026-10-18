@@ -13,7 +13,7 @@ export interface MemberDuplicateCandidate {
   pairKey: string;
   memberA: DuplicateMember;
   memberB: DuplicateMember;
-  confidence: 'high' | 'medium';
+  confidence: 'high' | 'medium' | 'low';
   score: number;
   reasons: string[];
 }
@@ -24,7 +24,7 @@ export interface MemberDuplicateGroup {
   matches: DuplicateMember[];
   memberIds: string[];
   matchCount: number;
-  confidence: 'high' | 'medium';
+  confidence: 'high' | 'medium' | 'low';
   score: number;
   reasons: string[];
 }
@@ -95,20 +95,45 @@ export function duplicateCandidateForPair(
   memberB: DuplicateMember,
 ): MemberDuplicateCandidate | null {
   const nameScore = nameSimilarity(memberA.name, memberB.name);
-  if (nameScore < 0.82) return null;
+  const nameTokensA = new Set(normalizeText(memberA.name).split(' ').filter(Boolean));
+  const nameTokensB = new Set(normalizeText(memberB.name).split(' ').filter(Boolean));
+  const sharedNames = [...nameTokensA].filter(token => nameTokensB.has(token));
 
   const phoneScore = contactSimilarity(memberA.phone, memberB.phone);
   const fellowshipScore = stringSimilarity(normalizeText(memberA.fellowship), normalizeText(memberB.fellowship));
-  const similarContact = Boolean(memberA.phone && memberB.phone && phoneScore >= 0.88);
-  const similarFellowship = Boolean(memberA.fellowship && memberB.fellowship && fellowshipScore >= 0.9);
-  if (!similarContact && !similarFellowship) return null;
+  const similarName = nameScore >= 0.82;
+  const similarContact = phoneScore >= 0.88;
+  const similarFellowship = fellowshipScore >= 0.9;
+  const matchingDetails = (['designation', 'birthday', 'location'] as const).filter(field => {
+    const value = normalizeText(memberA[field]);
+    return Boolean(value && value === normalizeText(memberB[field]));
+  });
+  if (!similarName && !sharedNames.length && !similarContact && !similarFellowship && !matchingDetails.length) return null;
 
-  const reasons = [`Names are ${Math.round(nameScore * 100)}% similar`];
+  const reasons: string[] = [];
+  if (similarName) reasons.push(`Names are ${Math.round(nameScore * 100)}% similar`);
+  if (sharedNames.length) reasons.push(`Shared name: ${sharedNames.join(', ')}`);
   if (similarContact) reasons.push(phoneScore === 1 ? 'Contact numbers match' : 'Contact numbers are similar');
   if (similarFellowship) reasons.push('Fellowships match');
-  const evidenceScore = Math.max(phoneScore, fellowshipScore);
-  const score = Math.round((nameScore * 0.6 + evidenceScore * 0.4) * 100);
-  const confidence = (nameScore >= 0.92 && (phoneScore === 1 || fellowshipScore === 1)) ? 'high' : 'medium';
+  const detailReasons = { designation: 'Designations match', birthday: 'Birthdays match', location: 'Locations match' };
+  matchingDetails.forEach(field => reasons.push(detailReasons[field]));
+
+  // Keep corroborated matches at the top; a single overlapping detail only
+  // suggests a review and must not look like a confirmed identity match.
+  const corroborated = similarName && (similarContact || similarFellowship);
+  const score = corroborated
+    ? Math.round((nameScore * 0.6 + Math.max(phoneScore, fellowshipScore) * 0.4) * 100)
+    : Math.round(Math.max(
+      similarName ? nameScore * 0.6 : 0,
+      sharedNames.length ? 0.5 : 0,
+      similarContact ? phoneScore * 0.55 : 0,
+      similarFellowship ? fellowshipScore * 0.35 : 0,
+      matchingDetails.includes('birthday') ? 0.45 : 0,
+      matchingDetails.includes('location') ? 0.3 : 0,
+      matchingDetails.includes('designation') ? 0.2 : 0,
+    ) * 100);
+  const confidence = (nameScore >= 0.92 && (phoneScore === 1 || fellowshipScore === 1))
+    ? 'high' : similarName || similarContact ? 'medium' : 'low';
 
   return {
     pairKey: duplicatePairKey(memberA.id, memberB.id),
@@ -176,7 +201,7 @@ export function groupMemberDuplicateCandidates(
   const groups = new Map<string, {
     anchor: DuplicateMember;
     matches: Map<string, DuplicateMember>;
-    confidence: 'high' | 'medium';
+    confidence: MemberDuplicateCandidate['confidence'];
     score: number;
     reasons: Set<string>;
   }>();
@@ -186,12 +211,14 @@ export function groupMemberDuplicateCandidates(
     const group = groups.get(key) || {
       anchor: candidate.memberA,
       matches: new Map<string, DuplicateMember>(),
-      confidence: 'medium' as const,
+      confidence: 'low' as const,
       score: 0,
       reasons: new Set<string>(),
     };
     group.matches.set(candidate.memberB.id, candidate.memberB);
-    if (candidate.confidence === 'high') group.confidence = 'high';
+    if (candidate.confidence === 'high' || (candidate.confidence === 'medium' && group.confidence === 'low')) {
+      group.confidence = candidate.confidence;
+    }
     group.score = Math.max(group.score, candidate.score);
     candidate.reasons.forEach(reason => group.reasons.add(reason));
     groups.set(key, group);

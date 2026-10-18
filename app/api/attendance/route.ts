@@ -96,7 +96,9 @@ export async function POST(request: NextRequest) {
 
     await appendAttendance(record);
     if (rosterMember) {
-      await syncMemberFromAttendance(record, rosterMember.id);
+      // Public check-in must not demote a cell/BSCT leader because its form
+      // omitted a designation or defaulted it to Member.
+      await syncMemberFromAttendance({ ...record, designation: canCorrectAttendance ? record.designation : undefined }, rosterMember.id);
     } else if (record.firstTimer === 'Yes') {
       await recordFirstTimerJourney(record);
     }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMembers, createMember } from '@/lib/database';
-import { getAuthContext, hasPermission } from '@/lib/auth';
+import { getAuthContext } from '@/lib/auth';
+import { memberApiFailure, requireMemberAccess } from '@/lib/member-api';
+import { memberFellowshipScope, parseMemberInput } from '@/lib/member-scope';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,57 +11,18 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const designation = searchParams.get('designation') || undefined;
     const requestedFellowship = searchParams.get('fellowship') || undefined;
-    const fellowship = context?.role === 'fellowship_leader'
-      ? context.fellowship
-      : requestedFellowship;
-
-    if (context?.role === 'fellowship_leader' && !fellowship) {
-      return NextResponse.json({ error: 'No fellowship scope configured' }, { status: 403 });
-    }
+    const fellowship = memberFellowshipScope(context) || requestedFellowship;
 
     const members = await getMembers(designation, fellowship);
     return NextResponse.json(members);
-  } catch (error: any) {
-    console.error('Error fetching members:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch members' },
-      { status: 500 }
-    );
-  }
+  } catch (error) { return memberApiFailure(error); }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const authenticated = await hasPermission('members');
-    if (!authenticated) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { name, phone, fellowship, designation, birthday, location } = body;
-
-    if (!name || !fellowship || !designation) {
-      return NextResponse.json(
-        { error: 'Name, fellowship, and designation are required' },
-        { status: 400 }
-      );
-    }
-
-    const member = await createMember({
-      name: name.trim(),
-      phone: (phone || '').trim(),
-      fellowship: fellowship.trim(),
-      designation: designation.trim(),
-      birthday: (birthday || '').trim(),
-      location: (location || '').trim(),
-    });
+    const context = await requireMemberAccess();
+    const member = await createMember(parseMemberInput(await request.json(), context));
 
     return NextResponse.json(member, { status: 201 });
-  } catch (error: any) {
-    console.error('Error creating member:', error);
-    return NextResponse.json(
-      { error: 'Failed to create member' },
-      { status: 500 }
-    );
-  }
+  } catch (error) { return memberApiFailure(error); }
 }

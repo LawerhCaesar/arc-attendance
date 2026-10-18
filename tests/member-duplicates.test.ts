@@ -29,12 +29,101 @@ test('flags a minor name variation in the same fellowship', () => {
   assert.ok((candidate?.score || 0) >= 80);
 });
 
-test('does not flag similar names without supporting contact or fellowship evidence', () => {
+test('flags a shared name without supporting contact or fellowship evidence', () => {
   const candidate = duplicateCandidateForPair(
     member('1', 'John Mensah', '0240000000', 'Pleroma'),
     member('2', 'Jon Mensah', '0559999999', 'Shalach'),
   );
-  assert.equal(candidate, null);
+  assert.ok(candidate);
+  assert.ok(candidate.reasons.includes('Shared name: mensah'));
+  assert.notEqual(candidate.confidence, 'high');
+});
+
+test('flags one name anywhere in a longer full name for review', () => {
+  for (const name of ['nana', 'mekhi', 'osei', 'owusu']) {
+    const candidate = duplicateCandidateForPair(
+      member('1', 'Nana Mekhi Osei Owusu', '', ''),
+      member('2', name, '', ''),
+    );
+    assert.ok(candidate, name);
+    assert.equal(candidate.confidence, 'low');
+    assert.ok(candidate.reasons.includes(`Shared name: ${name}`));
+  }
+});
+
+test('normalizes shared name tokens and accepts short names', () => {
+  const candidate = duplicateCandidateForPair(
+    member('1', 'Li, André-Mensah', '', ''),
+    member('2', 'li andre', '', ''),
+  );
+  assert.ok(candidate);
+  assert.ok(candidate.reasons.includes('Shared name: li, andre'));
+});
+
+test('flags similar full names even without any other recorded details', () => {
+  const candidate = duplicateCandidateForPair(
+    member('1', 'Akosua', '', ''),
+    member('2', 'Akoswa', '', ''),
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.confidence, 'medium');
+});
+
+test('any one shared member detail can independently suggest review', () => {
+  const details = [
+    { field: 'phone', left: '024 123 4567', right: '+233 24 123 4567', reason: 'Contact numbers match' },
+    { field: 'fellowship', left: 'Shalach', right: ' SHALACH ', reason: 'Fellowships match' },
+    { field: 'designation', left: 'Cell Leader', right: 'cell leader', reason: 'Designations match' },
+    { field: 'birthday', left: '1990-01-14', right: '1990-01-14', reason: 'Birthdays match' },
+    { field: 'location', left: 'East-Legon', right: 'east legon', reason: 'Locations match' },
+  ];
+  for (const { field, left, right, reason } of details) {
+    const candidate = duplicateCandidateForPair(
+      { ...member('1', 'Esi', '', ''), [field]: left },
+      { ...member('2', 'Kwame', '', ''), [field]: right },
+    );
+    assert.ok(candidate, field);
+    assert.deepEqual(candidate.reasons, [reason]);
+    assert.notEqual(candidate.confidence, 'high');
+    assert.ok(candidate.score < 80);
+  }
+});
+
+test('blank details and fragments inside different names are not overlaps', () => {
+  assert.equal(duplicateCandidateForPair(
+    { ...member('1', 'Ann', ' ', ' '), designation: ' ', birthday: ' ', location: '---' },
+    { ...member('2', 'Joanna', '', ''), designation: '', birthday: '', location: '' },
+  ), null);
+  assert.equal(duplicateCandidateForPair(
+    member('1', '', '', ''), member('2', '', '', ''),
+  ), null);
+});
+
+test('strong corroborated matches rank above a single overlapping detail', () => {
+  const anchor = member('a', 'Esi Owusu', '0241234567', 'Pleroma');
+  const candidates = findMemberDuplicateCandidates([
+    anchor,
+    member('b', 'Kwame', '', 'Pleroma'),
+    member('c', 'Esi Owusu', '0241234567', 'Shalach'),
+  ]);
+  assert.equal(candidates[0].pairKey, 'a:c');
+  assert.equal(candidates[0].confidence, 'high');
+  assert.equal(candidates[1].confidence, 'low');
+});
+
+test('broader candidates still honor keep-separate decisions', () => {
+  const members = [member('a', 'Nana Mekhi Osei Owusu', '', ''), member('b', 'Mekhi', '', '')];
+  assert.equal(findMemberDuplicateCandidates(members).length, 1);
+  assert.equal(findMemberDuplicateCandidates(members, new Set(['a:b'])).length, 0);
+});
+
+test('groups supported only by one shared detail retain low confidence', () => {
+  const groups = groupMemberDuplicateCandidates(findMemberDuplicateCandidates([
+    member('a', 'Esi', '', 'Pleroma'),
+    member('b', 'Kwame', '', 'Pleroma'),
+  ]));
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].confidence, 'low');
 });
 
 test('respects decisions to keep a pair separate', () => {

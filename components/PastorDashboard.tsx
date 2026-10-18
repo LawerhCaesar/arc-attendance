@@ -57,6 +57,7 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
   const mayNavigate = (destination: Destination) => !allowedDestinations || allowedDestinations.includes(destination);
   const [data, setData] = useState<PastoralDashboardData | null>(initialData || null);
   const [error, setError] = useState('');
+  const [refreshError, setRefreshError] = useState('');
   const [isLoading, setIsLoading] = useState(!initialData);
   const [period, setPeriod] = useState<DashboardPeriod>('ytd');
   const [query, setQuery] = useState('period=ytd');
@@ -66,19 +67,22 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
   const [rangeError, setRangeError] = useState('');
   const latestRequest = useRef(0);
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (background = false) => {
     const requestId = ++latestRequest.current;
-    setIsLoading(true);
-    setError('');
+    if (!background) { setIsLoading(true); setError(''); }
+    setRefreshError('');
     try {
       const response = await fetch(`/api/analytics/pastoral-dashboard?${query}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('Unable to load dashboard');
       const result = await response.json();
       if (requestId === latestRequest.current) setData(result);
     } catch {
-      if (requestId === latestRequest.current) setError('The pastoral overview could not be loaded. Please try again.');
+      if (requestId === latestRequest.current) {
+        if (background) setRefreshError('Member saved. Overview totals could not be refreshed; select Refresh totals to try again.');
+        else setError('The pastoral overview could not be loaded. Please try again.');
+      }
     } finally {
-      if (requestId === latestRequest.current) setIsLoading(false);
+      if (requestId === latestRequest.current && !background) setIsLoading(false);
     }
   }, [query]);
 
@@ -123,7 +127,7 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
       <div className="space-y-6">{periodControls}<div className="rounded-2xl border border-red-100 bg-white p-8 text-center shadow-sm">
         <p className="font-semibold text-gray-900">Pastoral overview unavailable</p>
         <p className="mt-1 text-sm text-gray-500">{error}</p>
-        <button onClick={loadDashboard} className="mt-5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">
+        <button onClick={() => loadDashboard()} className="mt-5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700">
           Try again
         </button>
       </div></div>
@@ -175,7 +179,8 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
 
   return (
     <div className="space-y-6">
-      <PastoralWeekly />
+      <PastoralWeekly canEditMembers={Boolean(allowedDestinations?.includes('members'))} onMemberSaved={() => { void loadDashboard(true); }} />
+      {refreshError && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{refreshError} <button type="button" onClick={() => loadDashboard(true)} className="font-semibold underline">Refresh totals</button></p>}
       {periodControls}
       <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-900 text-white shadow-lg">
         <div className="p-6 sm:p-8 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">

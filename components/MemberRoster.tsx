@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 import MemberEditSignIn from '@/components/MemberEditSignIn';
+import FellowshipStructure from '@/components/FellowshipStructure';
+import type { FellowshipCell, BsctGroup } from '@/lib/fellowship-structure';
 import { dateInAccra } from '@/lib/birthdays';
 
 interface Member {
@@ -15,6 +17,8 @@ interface Member {
   designation: string;
   birthday: string;
   location: string;
+  cell_id?: string | null;
+  bsct_group_id?: string | null;
 }
 
 const DESIGNATIONS = ['Fellowship Leader', 'Cell Leader', 'BSCT Leader', 'Member'] as const;
@@ -27,11 +31,15 @@ const designationColors: Record<string, string> = {
 };
 
 const emptyForm = (): Omit<Member, 'id'> => ({
-  name: '', phone: '', fellowship: '', designation: 'Cell Leader', birthday: '', location: '',
+  name: '', phone: '', fellowship: '', designation: 'Member', birthday: '', location: '', cell_id: null, bsct_group_id: null,
 });
 
-export default function MemberRoster({ canReviewDuplicates = false }: { canReviewDuplicates?: boolean }) {
+export default function MemberRoster({ canReviewDuplicates = false, fellowshipScope }: { canReviewDuplicates?: boolean; fellowshipScope?: string }) {
   const [members, setMembers] = useState<Member[]>([]);
+  const [cells, setCells] = useState<FellowshipCell[]>([]);
+  const [bsctGroups, setBsctGroups] = useState<BsctGroup[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [cellFilter, setCellFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [fellowshipFilter, setFellowshipFilter] = useState('all');
@@ -52,14 +60,24 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
 
   const fetchMembers = useCallback(async () => {
     setIsLoading(true);
+    setLoadError('');
     try {
-      const res = await fetch('/api/members', { cache: 'no-store' });
-      if (res.ok) setMembers(await res.json());
-    } catch {}
+      const [res, structureRes] = await Promise.all([
+        fetch('/api/members', { cache: 'no-store' }),
+        fetch('/api/members/structure', { cache: 'no-store' }),
+      ]);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Unable to load your roster.');
+      setMembers(result);
+      const structure = await structureRes.json();
+      if (!structureRes.ok) throw new Error(structure.error || 'Unable to load fellowship cells.');
+      setCells(structure.cells);
+      setBsctGroups(structure.bsctGroups);
+    } catch (caught) { setLoadError(caught instanceof Error ? caught.message : 'Unable to load your roster.'); }
     setIsLoading(false);
   }, []);
 
-  useEffect(() => { fetchMembers(); }, [fetchMembers]);
+  useEffect(() => { setMembers([]); setCells([]); setBsctGroups([]); setCellFilter('all'); fetchMembers(); }, [fetchMembers, fellowshipScope]);
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -90,16 +108,17 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
   const filtered = members.filter(m => {
     const matchFellowship = fellowshipFilter === 'all' || m.fellowship === fellowshipFilter;
     const matchDesignation = designationFilter === 'all' || m.designation === designationFilter;
+    const matchCell = cellFilter === 'all' || (cellFilter === 'unassigned' ? !m.cell_id : m.cell_id === cellFilter);
     const q = search.toLowerCase().trim();
     const matchSearch = !q || m.name.toLowerCase().includes(q) || m.fellowship.toLowerCase().includes(q) || m.phone.includes(q);
-    return matchFellowship && matchDesignation && matchSearch;
+    return matchFellowship && matchDesignation && matchSearch && matchCell;
   });
 
   const openAdd = () => {
     setNeedsSignIn(false);
     setSignInNotice(null);
     setEditingMember(null);
-    setForm(emptyForm());
+    setForm({ ...emptyForm(), fellowship: fellowshipScope || '' });
     setFormError(null);
     setShowForm(true);
   };
@@ -108,7 +127,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
     setNeedsSignIn(false);
     setSignInNotice(null);
     setEditingMember(m);
-    setForm({ name: m.name, phone: m.phone, fellowship: m.fellowship, designation: m.designation, birthday: m.birthday, location: m.location });
+    setForm({ name: m.name, phone: m.phone, fellowship: m.fellowship, designation: m.designation, birthday: m.birthday, location: m.location, cell_id: m.cell_id || null, bsct_group_id: m.bsct_group_id || null });
     setFormError(null);
     setShowForm(true);
   };
@@ -159,8 +178,11 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
         await fetchMembers();
         setDuplicateReviewVersion(value => value + 1);
         setTimeout(() => setSuccessMsg(null), 3000);
+      } else {
+        const result = await res.json();
+        setLoadError(result.error || 'Unable to remove this member.');
       }
-    } catch {}
+    } catch { setLoadError('Unable to remove this member.'); }
     setDeletingId(null);
   };
 
@@ -218,7 +240,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
             phone: phoneIdx !== -1 ? String(row[phoneIdx] || '').trim() : '',
             location: locationIdx !== -1 ? String(row[locationIdx] || '').trim() : '',
             birthday,
-            fellowship: matchFellowship(fellowshipIdx !== -1 ? String(row[fellowshipIdx] || '').trim() : ''),
+            fellowship: fellowshipScope && fellowshipIdx === -1 ? fellowshipScope : matchFellowship(fellowshipIdx !== -1 ? String(row[fellowshipIdx] || '').trim() : ''),
             designation: DESIGNATIONS.includes(designation as any) ? designation as any : 'Member',
           });
         }
@@ -238,12 +260,12 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
             setDuplicateReviewVersion(value => value + 1);
             setTimeout(() => setSuccessMsg(null), 5000);
           } else {
-            setFormError(`Failed to sync database.`);
+            setLoadError('Unable to import members. Every row must belong to your assigned fellowship.');
             setIsLoading(false);
           }
         })
         .catch(() => {
-          setFormError(`Failed to sync database.`);
+          setLoadError('Unable to import members. Please try again.');
           setIsLoading(false);
         });
       } catch {
@@ -257,12 +279,15 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
 
   return (
     <div className="space-y-4">
+      {fellowshipScope && <p className="rounded-lg bg-blue-50 p-3 text-sm font-semibold text-blue-900">{fellowshipScope} Fellowship · Manage your brethren, cells and BSCT groups</p>}
+      {loadError && <DismissibleBanner role="alert" onDismiss={() => setLoadError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{loadError} <button type="button" onClick={fetchMembers} className="ml-2 underline">Retry</button></DismissibleBanner>}
       {/* Success banner */}
       {successMsg && (
         <DismissibleBanner onDismiss={() => setSuccessMsg(null)} className="p-3 bg-green-100 text-green-800 rounded-xl text-sm font-medium">{successMsg}</DismissibleBanner>
       )}
 
       {canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
+      {!loadError && <FellowshipStructure members={members} cells={cells} bsctGroups={bsctGroups} fellowshipScope={fellowshipScope} loading={isLoading} onChanged={fetchMembers} onEditMember={id => { const member = members.find(member => member.id === id); if (member) openEdit(member); }} />}
 
       <section aria-labelledby="member-export-heading" className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -299,10 +324,15 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
           <select
             value={fellowshipFilter}
             onChange={e => setFellowshipFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={Boolean(fellowshipScope)}
+            className="px-4 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:hidden"
           >
             <option value="all">All Fellowships</option>
             {fellowships.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <select aria-label="Filter members by cell" value={cellFilter} onChange={event => setCellFilter(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+            <option value="all">All Cells</option><option value="unassigned">No Cell Assigned</option>
+            {cells.filter(cell => !fellowshipScope || cell.fellowship === fellowshipScope).map(cell => <option key={cell.id} value={cell.id}>{!fellowshipScope ? `${cell.fellowship} · ` : ''}Cell {cell.number}</option>)}
           </select>
           <div className="flex gap-2">
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload-roster" />
@@ -345,7 +375,6 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
               {[
                 { label: 'Full Name *', field: 'name', placeholder: 'Enter full name', type: 'text' },
                 { label: 'Phone', field: 'phone', placeholder: 'Phone number', type: 'tel' },
-                { label: 'Fellowship *', field: 'fellowship', placeholder: 'Fellowship name', type: 'text' },
                 { label: 'Location', field: 'location', placeholder: 'Location / Area', type: 'text' },
                 { label: 'Birthday (DD-MM)', field: 'birthday', placeholder: 'e.g. 15-04', type: 'text' },
               ].map(({ label, field, placeholder, type }) => (
@@ -364,7 +393,8 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
                   <label className="block text-xs font-medium text-gray-600 mb-1">Fellowship *</label>
                   <select
                     value={form.fellowship}
-                    onChange={e => setForm({ ...form, fellowship: e.target.value })}
+                    disabled={Boolean(fellowshipScope)}
+                    onChange={e => setForm({ ...form, fellowship: e.target.value, cell_id: null, bsct_group_id: null })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
                     <option value="" disabled>Select a fellowship</option>
@@ -372,6 +402,20 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
                     {FELLOWSHIPS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Cell</label>
+                <select value={form.cell_id || ''} onChange={event => setForm(current => ({ ...current, cell_id: event.target.value || null, bsct_group_id: null }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <option value="">Not assigned to a cell</option>
+                  {cells.filter(cell => cell.fellowship === form.fellowship).map(cell => <option key={cell.id} value={cell.id}>Cell {cell.number}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">BSCT Group</label>
+                <select disabled={!form.cell_id} value={form.bsct_group_id || ''} onChange={event => setForm(current => ({ ...current, bsct_group_id: event.target.value || null }))} className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm disabled:opacity-50">
+                  <option value="">Not assigned to a BSCT group</option>
+                  {bsctGroups.filter(group => group.cell_id === form.cell_id).map(group => <option key={group.id} value={group.id}>BSCT {group.number}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Designation *</label>
                 <select
@@ -430,7 +474,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
             <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Name', 'Phone', 'Fellowship', 'Designation', 'Birthday', 'Location', 'Actions'].map(h => (
+                  {['Name', 'Phone', 'Fellowship', 'Cell / BSCT', 'Designation', 'Birthday', 'Location', 'Actions'].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       {h}
                     </th>
@@ -450,6 +494,7 @@ export default function MemberRoster({ canReviewDuplicates = false }: { canRevie
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-500">{member.phone || '—'}</td>
                     <td className="px-5 py-3 text-sm text-gray-600">{member.fellowship || '—'}</td>
+                    <td className="px-5 py-3 text-sm text-gray-600">{member.cell_id ? `Cell ${cells.find(cell => cell.id === member.cell_id)?.number || '—'}` : 'Unassigned'}{member.bsct_group_id && <span className="block text-xs text-indigo-700">BSCT {bsctGroups.find(group => group.id === member.bsct_group_id)?.number || '—'}</span>}</td>
                     <td className="px-5 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${designationColors[member.designation] || designationColors['Member']}`}>
                         {member.designation}

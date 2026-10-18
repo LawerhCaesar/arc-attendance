@@ -4,6 +4,8 @@ import { canAccess } from '@/lib/permissions';
 import { getMembers } from '@/lib/database';
 import { dateInAccra } from '@/lib/birthdays';
 import { buildMemberExport } from '@/lib/member-export';
+import { memberApiFailure } from '@/lib/member-api';
+import { memberFellowshipScope } from '@/lib/member-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +16,8 @@ export async function GET() {
     if (!canAccess(context, 'members')) {
       return NextResponse.json({ error: 'Your role does not have Member Roster access.' }, { status: 403 });
     }
-    if (context.role === 'fellowship_leader' && !context.fellowship) {
-      return NextResponse.json({ error: 'No fellowship scope configured.' }, { status: 403 });
-    }
     // Fetch the full permitted active roster, not the browser's search/filter results.
-    const members = await getMembers(undefined, context.role === 'fellowship_leader' ? context.fellowship : undefined);
+    const members = await getMembers(undefined, memberFellowshipScope(context));
     return new NextResponse(buildMemberExport(members), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -26,8 +25,5 @@ export async function GET() {
         'Cache-Control': 'private, no-store, max-age=0',
       },
     });
-  } catch (error) {
-    console.error('Member export failed:', error);
-    return NextResponse.json({ error: 'Could not export members. Please try again.' }, { status: 500 });
-  }
+  } catch (error) { return memberApiFailure(error); }
 }

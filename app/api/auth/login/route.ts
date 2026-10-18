@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSession, verifyPassword, type AuthContext } from '@/lib/auth';
+import { configuredAuthContext, createSession, verifyPassword, type AuthContext } from '@/lib/auth';
 import { configuredUsers } from '@/lib/configured-users';
-import { DEFAULT_PERMISSIONS, homeForPermissions } from '@/lib/permissions';
+import { homeForPermissions } from '@/lib/permissions';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { isSuperAdmin } from '@/lib/super-admin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,20 +14,24 @@ export async function POST(request: NextRequest) {
     const normalized = username.trim().toLowerCase();
     const configured = configuredUsers().find(user => user.username.toLowerCase() === normalized);
     let context: AuthContext | null = null;
-    if (configured) {
+    if (configured && isSuperAdmin(configured)) {
       if (await verifyPassword(password, configured.password)) {
-        context = { username: configured.username, role: configured.role, fellowship: configured.fellowship, permissions: DEFAULT_PERMISSIONS[configured.role] };
+        context = await configuredAuthContext(configured);
       }
     } else {
       const admin = getSupabaseAdmin();
-      if (!admin) return NextResponse.json({ error: 'Account service unavailable. Contact your administrator.' }, { status: 503 });
-      const { data: account, error } = await admin.from('staff_accounts')
-        .select('id, username, password_hash, role_id, fellowship, is_active, session_version').eq('username', normalized).maybeSingle();
+      if (!admin && !configured) return NextResponse.json({ error: 'Account service unavailable. Contact your administrator.' }, { status: 503 });
+      const result = admin ? await admin.from('staff_accounts')
+        .select('id, username, password_hash, role_id, fellowship, is_active, session_version').eq('username', normalized).maybeSingle()
+        : { data: null, error: null };
+      const { data: account, error } = result;
       if (error) throw error;
-      if (account?.is_active && await verifyPassword(password, account.password_hash)) {
+      if (admin && account?.is_active && await verifyPassword(password, account.password_hash)) {
         const { data: role, error: roleError } = await admin.from('staff_roles').select('key, permissions').eq('id', account.role_id).single();
         if (roleError) throw roleError;
         context = { username: account.username, role: role.key, permissions: role.permissions, fellowship: account.fellowship || undefined, accountId: account.id, sessionVersion: account.session_version };
+      } else if (!account && configured && await verifyPassword(password, configured.password)) {
+        context = await configuredAuthContext(configured);
       }
     }
     if (!context) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });

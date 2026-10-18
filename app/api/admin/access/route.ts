@@ -3,23 +3,26 @@ import { randomUUID } from 'crypto';
 import { getAuthContext, hashPassword } from '@/lib/auth';
 import { configuredUsers } from '@/lib/configured-users';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { canAccess, validateNewPassword, validateRolePermissions } from '@/lib/permissions';
+import { canAccess, validateNewPassword } from '@/lib/permissions';
+import { validateEditableRolePermissions, validateUsername, type AccessRole, type ManagedAccount } from '@/lib/access-management';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fetchAllRows } from '@/lib/pagination';
+import { isSuperAdmin } from '@/lib/super-admin';
 
 export const dynamic = 'force-dynamic';
-const accountFields = 'id, username, display_name, role_id, fellowship, is_active, created_at, updated_at';
+const accountFields = 'id, username, display_name, role_id, fellowship, member_id, configured_username, is_active, created_at, updated_at';
 const roleFields = 'id, key, name, permissions, is_system';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function failure(error: unknown) {
   const code = (error as { code?: string })?.code;
-  if (code === '23505') return NextResponse.json({ error: 'That username or role name already exists.' }, { status: 409 });
-  if (code === 'P0001') return NextResponse.json({ error: 'This change would remove the last managed administrator or alter a protected role.' }, { status: 409 });
+  if (code === '23505') return NextResponse.json({ error: 'That username, configured login or role name already has an account. Refresh and choose another username if needed.' }, { status: 409 });
+  if (code === 'P0001') return NextResponse.json({ error: (error as { message?: string }).message || 'This change would remove the last administrator or alter a protected role.' }, { status: 409 });
   if (code === '23503') return NextResponse.json({ error: 'The selected role no longer exists. Refresh and try again.' }, { status: 409 });
   if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ error: 'Account management is unavailable. Check that the user-role migration has been applied.' }, { status: 503 });
+  return NextResponse.json({ error: 'Account management is unavailable. Apply the role-account management migration and check server configuration.' }, { status: 503 });
 }
+const forbidden = (error: string) => NextResponse.json({ error }, { status: 403 });
 
 export async function GET() {
   const context = await getAuthContext();
@@ -27,12 +30,18 @@ export async function GET() {
   try {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error('Account management requires server configuration.');
-    const [accounts, roles] = await Promise.all([
-      fetchAllRows((from, to) => admin.from('staff_accounts').select(accountFields).order('username').order('id').range(from, to)),
-      fetchAllRows((from, to) => admin.from('staff_roles').select(roleFields).order('name').order('id').range(from, to)),
+    const [accounts, roles, fellowshipLeaders] = await Promise.all([
+      fetchAllRows<ManagedAccount>((from, to) => admin.from('staff_accounts').select(accountFields).order('username').order('id').range(from, to)),
+      fetchAllRows<AccessRole>((from, to) => admin.from('staff_roles').select(roleFields).order('name').order('id').range(from, to)),
+      isSuperAdmin(context) ? fetchAllRows((from, to) => admin.from('members').select('id, name, fellowship')
+        .eq('is_active', true).eq('designation', 'Fellowship Leader').order('fellowship').order('name').order('id').range(from, to)) : [],
     ]);
-    return NextResponse.json({ accounts, roles, currentAccountId: context?.accountId || null,
-      configuredAccounts: configuredUsers().map(({ username, role }) => ({ username, role })),
+    const overridden = new Set(accounts.map(account => account.configured_username));
+    return NextResponse.json({ accounts, roles, fellowshipLeaders,
+      canManageFellowshipLeaders: isSuperAdmin(context), canEditSystemRoles: isSuperAdmin(context), canManageConfiguredAccounts: isSuperAdmin(context),
+      currentAccountId: context?.accountId || null,
+      configuredAccounts: configuredUsers().filter(user => !overridden.has(user.username.toLowerCase()))
+        .map(user => ({ username: user.username, role: user.role, fellowship: user.fellowship, isBaseAdmin: isSuperAdmin(user) })),
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return failure(error); }
 }
@@ -41,7 +50,7 @@ async function save(request: NextRequest, editing: boolean) {
   const context = await getAuthContext();
   if (!canAccess(context, 'users')) return NextResponse.json({ error: 'Administrator access required' }, { status: context ? 403 : 401 });
   const origin = request.headers.get('origin');
-  if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: 'Cross-site changes are not allowed' }, { status: 403 });
+  if (origin && origin !== request.nextUrl.origin) return forbidden('Cross-site changes are not allowed');
   try {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error('Account management requires server configuration.');
@@ -49,12 +58,15 @@ async function save(request: NextRequest, editing: boolean) {
     if (editing && (typeof body.id !== 'string' || !uuid.test(body.id))) throw new Error('Select a valid account or role.');
     if (body.kind === 'role') {
       if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 80) throw new Error('Enter a role name of 1–80 characters.');
-      const permissions = validateRolePermissions(body.permissions);
+      let existing: AccessRole | null = null;
       if (editing) {
-        const { data: existing, error } = await admin.from('staff_roles').select('id, is_system').eq('id', body.id).maybeSingle();
-        if (error) throw error;
-        if (!existing || existing.is_system) throw new Error('Built-in roles are protected. Create a custom role instead.');
+        const result = await admin.from('staff_roles').select(roleFields).eq('id', body.id).maybeSingle();
+        if (result.error) throw result.error;
+        existing = result.data;
+        if (!existing) throw new Error('Role not found.');
+        if (existing.is_system && !isSuperAdmin(context)) return forbidden('Only the base administrator can edit built-in roles.');
       }
+      const permissions = validateEditableRolePermissions(body.permissions, existing?.key);
       const record = { name: body.name.trim(), permissions };
       const query = editing ? admin.from('staff_roles').update(record).eq('id', body.id) : admin.from('staff_roles').insert({ ...record, key: `custom_${randomUUID()}`, is_system: false });
       const { data, error } = await query.select(roleFields).single();
@@ -67,25 +79,44 @@ async function save(request: NextRequest, editing: boolean) {
     const { data: role, error: roleError } = await admin.from('staff_roles').select('id, key').eq('id', body.role_id).maybeSingle();
     if (roleError) throw roleError;
     if (!role) throw new Error('Select an existing role.');
+    if (role.key === 'fellowship_leader' && !isSuperAdmin(context)) return forbidden('Only the base administrator can create or manage fellowship leader accounts.');
     const fellowship = role.key === 'fellowship_leader' ? body.fellowship : null;
     if (role.key === 'fellowship_leader' && !FELLOWSHIPS.includes(fellowship)) throw new Error('Choose the fellowship this leader can access.');
-    const record: Record<string, unknown> = { display_name: body.display_name.trim(), role_id: role.id, is_active: body.is_active, fellowship };
+
+    let existing: ManagedAccount | null = null;
     if (editing) {
-      if (context?.accountId === body.id && (!body.is_active || role.key !== 'admin')) throw new Error('You cannot remove your own administrator access.');
-      const { data: existing, error } = await admin.from('staff_accounts').select('id').eq('id', body.id).maybeSingle();
-      if (error) throw error;
+      const result = await admin.from('staff_accounts').select(accountFields).eq('id', body.id).maybeSingle();
+      if (result.error) throw result.error;
+      existing = result.data;
       if (!existing) throw new Error('Account not found.');
-    } else {
-      const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : '';
-      if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(username)) throw new Error('Username must be 3–64 letters, numbers, dots, underscores or hyphens.');
-      if (configuredUsers().some(user => user.username.toLowerCase() === username)) throw new Error('This username belongs to an existing environment account. Choose another username.');
-      record.username = username;
+      const previousRole = await admin.from('staff_roles').select('key').eq('id', existing.role_id).single();
+      if (previousRole.error) throw previousRole.error;
+      if (previousRole.data.key === 'fellowship_leader' && !isSuperAdmin(context)) return forbidden('Only the base administrator can create or manage fellowship leader accounts.');
+      if (context?.accountId === body.id && (!body.is_active || role.key !== 'admin')) throw new Error('You cannot remove your own administrator access.');
     }
-    if (!editing || (typeof body.password === 'string' && body.password.length)) record.password_hash = await hashPassword(validateNewPassword(body.password));
+    const source = !editing && typeof body.configuredUsername === 'string'
+      ? configuredUsers().find(user => user.username.toLowerCase() === body.configuredUsername.toLowerCase()) : undefined;
+    if (body.configuredUsername && !source) throw new Error('Configured account not found. Refresh and try again.');
+    if (source && (!isSuperAdmin(context) || isSuperAdmin(source))) return forbidden('Only the base administrator can manage configured staff logins. Base administrator credentials remain in hosting configuration.');
+
+    // Legacy clients may omit username on an edit; preserve it in that case.
+    const username = validateUsername(body.username ?? existing?.username);
+    const reserved = configuredUsers().find(user => user.username.toLowerCase() === username);
+    const sourceUsername = source?.username.toLowerCase() || existing?.configured_username;
+    if (reserved && reserved.username.toLowerCase() !== sourceUsername) throw new Error('This username belongs to an existing configured account. Choose another username.');
+    const record: Record<string, unknown> = { username, display_name: body.display_name.trim(), role_id: role.id, is_active: body.is_active, fellowship };
+    if (source) record.configured_username = source.username.toLowerCase();
+    if (typeof body.password === 'string' && body.password.length) record.password_hash = await hashPassword(validateNewPassword(body.password));
+    else if (!editing) {
+      if (!source) throw new Error('Enter a password for the new account.');
+      record.password_hash = /^\$2[aby]\$/.test(source.password) ? source.password : await hashPassword(source.password);
+    }
     const query = editing ? admin.from('staff_accounts').update(record).eq('id', body.id) : admin.from('staff_accounts').insert(record);
     const { data, error } = await query.select(accountFields).single();
     if (error) throw error;
-    return NextResponse.json({ account: data }, { status: editing ? 200 : 201 });
+    const sessionInvalidated = (context?.accountId === data.id && (existing?.username !== username || Boolean(record.password_hash))) ||
+      Boolean(source && context?.username.toLowerCase() === source.username.toLowerCase());
+    return NextResponse.json({ account: data, sessionInvalidated }, { status: editing ? 200 : 201 });
   } catch (error) { return failure(error); }
 }
 

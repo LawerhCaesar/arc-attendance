@@ -2,27 +2,7 @@
 import DismissibleBanner from './DismissibleBanner';
 
 import { useCallback, useEffect, useState } from 'react';
-
-interface DuplicateMember {
-  id: string;
-  name: string;
-  phone?: string;
-  fellowship?: string;
-  designation?: string;
-  birthday?: string;
-  location?: string;
-}
-
-interface DuplicateGroup {
-  groupKey: string;
-  anchor: DuplicateMember;
-  matches: DuplicateMember[];
-  memberIds: string[];
-  matchCount: number;
-  confidence: 'high' | 'medium';
-  score: number;
-  reasons: string[];
-}
+import { duplicateCandidateForPair, type DuplicateMember, type MemberDuplicateGroup as DuplicateGroup } from '@/lib/member-duplicates';
 
 interface MemberDuplicateReviewProps {
   onRosterChanged: () => Promise<void>;
@@ -54,6 +34,7 @@ function MemberCard({ member, selected, onSelect }: { member: DuplicateMember; s
 export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 }: MemberDuplicateReviewProps) {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [primaryByGroup, setPrimaryByGroup] = useState<Record<string, string>>({});
+  const [selectedByGroup, setSelectedByGroup] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [workingGroup, setWorkingGroup] = useState<string | null>(null);
@@ -77,6 +58,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
       setTotalCandidates(result.totalCandidates || 0);
       setTotalGroups(result.totalGroups || 0);
       setPrimaryByGroup(Object.fromEntries((result.groups || []).map((group: DuplicateGroup) => [group.groupKey, group.anchor.id])));
+      setSelectedByGroup({});
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Duplicate scan failed');
     } finally {
@@ -88,7 +70,9 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
 
   const decide = async (group: DuplicateGroup, action: 'keep_separate' | 'merge') => {
     if (workingGroup) return;
-    if (action === 'merge' && !confirm(`Merge ${group.matchCount} matching record(s) into the selected primary? All attendance history will belong to the primary member. Existing values will be preserved and empty fields will be filled from the other records.`)) return;
+    const selectedIds = (selectedByGroup[group.groupKey] || []).filter(id => group.matches.some(member => member.id === id));
+    if (!selectedIds.length) return;
+    if (action === 'merge' && !confirm(`Merge ${selectedIds.length} selected record(s) into the selected primary? All attendance history will belong to the primary member. Existing values will be preserved and empty fields will be filled from the other records.`)) return;
     setWorkingGroup(group.groupKey);
     setError('');
     setNotice('');
@@ -99,7 +83,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
         body: JSON.stringify({
           action,
           anchorId: group.anchor.id,
-          memberIds: group.memberIds,
+          memberIds: [group.anchor.id, ...selectedIds],
           primaryId: primaryByGroup[group.groupKey],
         }),
       });
@@ -131,7 +115,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <h3 className="font-bold text-amber-950">Possible duplicate members</h3>
             <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{totalGroups}</span>
           </div>
-          <p className="mt-1 text-xs leading-5 text-amber-800">Each primary record is grouped with all related matches. No record is merged automatically.</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">One shared name or member detail can suggest a match. Review each record and select which ones to merge or keep separate. No record is merged automatically.</p>
         </div>
         <span className="shrink-0 text-sm font-semibold text-amber-900">{expanded ? 'Hide' : 'Review'}</span>
       </button>
@@ -147,8 +131,8 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <article key={group.groupKey} className="rounded-xl border border-gray-200 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${group.confidence === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>{group.confidence} confidence</span>
-                  <span className="text-xs font-semibold text-gray-500">Up to {group.score}% match</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${group.confidence === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>Strongest match: {group.confidence} confidence</span>
+                  <span className="text-xs font-semibold text-gray-500">Highest match score: {group.score}/100</span>
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">{group.matchCount} possible match{group.matchCount === 1 ? '' : 'es'}</span>
                 </div>
                 <p className="text-xs text-gray-500">{group.reasons.slice(0, 3).join(' · ')}</p>
@@ -161,16 +145,35 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Possible matches</p>
                 <div className="grid gap-3 md:grid-cols-2">
                   {group.matches.map(member => (
-                    <MemberCard key={member.id} member={member} selected={primaryByGroup[group.groupKey] === member.id} onSelect={() => setPrimaryByGroup(current => ({ ...current, [group.groupKey]: member.id }))} />
+                    <div key={member.id} className="space-y-2">
+                      <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                        <input type="checkbox" disabled={Boolean(workingGroup)} checked={(selectedByGroup[group.groupKey] || []).includes(member.id)} onChange={event => {
+                          const checked = event.target.checked;
+                          setSelectedByGroup(current => ({ ...current, [group.groupKey]: checked
+                            ? [...(current[group.groupKey] || []), member.id]
+                            : (current[group.groupKey] || []).filter(id => id !== member.id) }));
+                          if (!checked && primaryByGroup[group.groupKey] === member.id) {
+                            setPrimaryByGroup(current => ({ ...current, [group.groupKey]: group.anchor.id }));
+                          }
+                        }} />
+                        Include for this decision
+                      </label>
+                      <MemberCard member={member} selected={primaryByGroup[group.groupKey] === member.id} onSelect={() => {
+                        if (workingGroup) return;
+                        setPrimaryByGroup(current => ({ ...current, [group.groupKey]: member.id }));
+                        setSelectedByGroup(current => ({ ...current, [group.groupKey]: Array.from(new Set([...(current[group.groupKey] || []), member.id])) }));
+                      }} />
+                      <p className="text-xs text-gray-500">{duplicateCandidateForPair(group.anchor, member)?.reasons.join(' · ')}</p>
+                    </div>
                   ))}
                 </div>
                 {group.matchCount > group.matches.length && (
-                  <p className="mt-3 rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-600">+ {group.matchCount - group.matches.length} more matching record(s) included in this group</p>
+                  <p className="mt-3 rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-600">{group.matchCount - group.matches.length} more possible matches remain. Review the shown records first; more will appear after you save a decision. Only selected records are included in your decision.</p>
                 )}
               </div>
               <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button type="button" disabled={Boolean(workingGroup)} onClick={() => decide(group, 'keep_separate')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Keep group separate</button>
-                <button type="button" disabled={Boolean(workingGroup)} onClick={() => decide(group, 'merge')} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{workingGroup === group.groupKey ? 'Saving decision…' : `Merge all ${group.matchCount} into selected primary`}</button>
+                <button type="button" disabled={Boolean(workingGroup) || !selectedByGroup[group.groupKey]?.length} onClick={() => decide(group, 'keep_separate')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">Keep selected separate</button>
+                <button type="button" disabled={Boolean(workingGroup) || !selectedByGroup[group.groupKey]?.length} onClick={() => decide(group, 'merge')} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-50">{workingGroup === group.groupKey ? 'Saving decision…' : `Merge ${selectedByGroup[group.groupKey]?.length || 0} selected into primary`}</button>
               </div>
             </article>
           ))}

@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { matchFellowship } from './fellowships';
 import { fetchAllRows } from './pagination';
 import { consolidateLinkedAttendance, matchesRosterMember, normalizePhone } from './attendance-identity';
+import { getSupabaseAdmin } from './supabase-admin';
 
 export interface AttendanceRecord {
   id?: string;
@@ -28,6 +29,8 @@ export interface Member {
   designation: string; // "Fellowship Leader" | "Cell Leader" | "BSCT Leader" | "Member"
   birthday: string;
   location: string;
+  cell_id?: string | null;
+  bsct_group_id?: string | null;
   is_active?: boolean;
   merged_into_id?: string | null;
   created_at?: string;
@@ -177,6 +180,15 @@ export async function getMembers(
   return fetchAllRows<Member>((from, to) => query.range(from, to));
 }
 
+/** Fetch one active member within the caller's permitted fellowship. */
+export async function getMember(id: string, fellowshipScope?: string): Promise<Member | null> {
+  let query = supabase.from(MEMBERS_TABLE).select('*').eq('id', id).eq('is_active', true);
+  if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 const normalizedPhone = normalizePhone;
 
 /** Find an active roster member using phone first, then name and fellowship. */
@@ -223,22 +235,24 @@ export async function createMember(
     payload.fellowship = matchFellowship(payload.fellowship);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await (getSupabaseAdmin() || supabase)
     .from(MEMBERS_TABLE)
     .insert([payload])
     .select()
     .single();
 
   if (error) {
-    throw new Error(`Failed to create member: ${error.message}`);
+    throw error;
   }
 
   return data;
 }
 
 /** Auto-sync Member from Attendance */
-export async function syncMemberFromAttendance(record: AttendanceRecord, memberId?: string): Promise<void> {
+export async function syncMemberFromAttendance(record: AttendanceRecord, memberId?: string, fellowshipScope?: string): Promise<void> {
   if (!record.name) return;
+  if (fellowshipScope && record.fellowship !== fellowshipScope) throw new Error('Outside your fellowship scope');
+  const client = getSupabaseAdmin() || supabase;
 
   if (memberId) {
     const updatePayload: Partial<Member> & { updated_at: string } = { updated_at: new Date().toISOString() };
@@ -247,7 +261,9 @@ export async function syncMemberFromAttendance(record: AttendanceRecord, memberI
     if (record.location) updatePayload.location = record.location;
     if (record.birthday) updatePayload.birthday = record.birthday;
 
-    const { error } = await supabase.from(MEMBERS_TABLE).update(updatePayload).eq('id', memberId);
+    let query = client.from(MEMBERS_TABLE).update(updatePayload).eq('id', memberId).eq('is_active', true);
+    if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
+    const { error } = await query;
     if (error) throw new Error(`Failed to sync roster member: ${error.message}`);
     return;
   }
@@ -258,7 +274,7 @@ export async function syncMemberFromAttendance(record: AttendanceRecord, memberI
   let existing: { id: string } | undefined;
   const recordPhone = normalizedPhone(record.phone);
   if (recordPhone) {
-    const candidates = await getMembers();
+    const candidates = await getMembers(undefined, fellowshipScope);
     existing = candidates.find(candidate => normalizedPhone(candidate.phone) === recordPhone) as { id: string } | undefined;
   }
 
@@ -279,45 +295,54 @@ export async function syncMemberFromAttendance(record: AttendanceRecord, memberI
     if (record.birthday) updatePayload.birthday = record.birthday;
     
     if (Object.keys(updatePayload).length > 0) {
-      await supabase
+      let query = client
         .from(MEMBERS_TABLE)
         .update({ ...updatePayload, updated_at: new Date().toISOString() })
-        .eq('id', existing.id);
+        .eq('id', existing.id).eq('is_active', true);
+      if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
+      const { error } = await query;
+      if (error) throw new Error(`Failed to sync roster member: ${error.message}`);
     }
   }
 }
 
 export async function updateMember(
   id: string,
-  member: Partial<Omit<Member, 'id' | 'created_at' | 'updated_at'>>
-): Promise<Member> {
+  member: Partial<Omit<Member, 'id' | 'created_at' | 'updated_at'>>,
+  fellowshipScope?: string,
+): Promise<Member | null> {
   const payload = { ...member, updated_at: new Date().toISOString() };
   if (payload.fellowship !== undefined) {
     payload.fellowship = matchFellowship(payload.fellowship);
   }
 
-  const { data, error } = await supabase
+  let query = (getSupabaseAdmin() || supabase)
     .from(MEMBERS_TABLE)
     .update(payload)
-    .eq('id', id)
+    .eq('id', id).eq('is_active', true);
+  if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
+  const { data, error } = await query
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to update member: ${error.message}`);
+    throw error;
   }
 
   return data;
 }
 
 /** Soft delete a member (set is_active = false) */
-export async function deleteMember(id: string): Promise<void> {
-  const { error } = await supabase
+export async function deleteMember(id: string, fellowshipScope?: string): Promise<boolean> {
+  let query = (getSupabaseAdmin() || supabase)
     .from(MEMBERS_TABLE)
     .update({ is_active: false, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id).eq('is_active', true);
+  if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
+  const { data, error } = await query.select('id').maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to delete member: ${error.message}`);
+    throw error;
   }
+  return Boolean(data);
 }

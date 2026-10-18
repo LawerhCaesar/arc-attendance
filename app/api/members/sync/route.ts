@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { syncMemberFromAttendance } from '@/lib/database';
 import { getAuthContext } from '@/lib/auth';
 import { canAccess } from '@/lib/permissions';
+import { memberFellowshipScope, parseMemberInput } from '@/lib/member-scope';
+import { memberApiFailure } from '@/lib/member-api';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,14 +19,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Members must be an array' }, { status: 400 });
     }
 
-    if (context.role === 'fellowship_leader' && (
-      !context.fellowship || members.some(member => member.fellowship !== context.fellowship)
-    )) {
-      return NextResponse.json({ error: 'Outside your fellowship scope' }, { status: 403 });
-    }
+    const scope = memberFellowshipScope(context);
+    // Validate the complete import before making any writes.
+    const prepared = members.map(member => parseMemberInput({ ...member, designation: member?.designation || 'Member' }, context));
 
     // Sync each member into the database
-    for (const member of members) {
+    for (const member of prepared) {
       if (member.name) {
         await syncMemberFromAttendance({
           date: new Date().toISOString().split('T')[0],
@@ -33,15 +33,12 @@ export async function POST(request: NextRequest) {
           location: (member.location || '').trim(),
           birthday: (member.birthday || '').trim(),
           fellowship: (member.fellowship || '').trim(),
-          firstTimer: member.firstTimer ? 'Yes' : 'No',
+          firstTimer: 'No',
           designation: member.designation || 'Member',
-        });
+        }, undefined, scope);
       }
     }
 
     return NextResponse.json({ message: 'Members synced successfully' }, { status: 200 });
-  } catch (error: any) {
-    console.error('Error syncing members:', error);
-    return NextResponse.json({ error: 'Failed to sync members' }, { status: 500 });
-  }
+  } catch (error) { return memberApiFailure(error); }
 }

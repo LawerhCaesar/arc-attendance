@@ -164,3 +164,47 @@ The attendance records are stored in MongoDB with the following structure:
 
 MIT
 
+## Fellowship leaders, cells and BSCT groups
+
+Apply the Supabase migrations in order, including
+`supabase/migrations/202610180001_fellowship_structure.sql` and
+`supabase/migrations/202610180002_role_account_management.sql`, before deploying this
+workspace. The server needs `SUPABASE_SERVICE_ROLE_KEY` for roster writes and
+structure management. The migration removes direct roster writes from public
+Supabase clients; public attendance continues through the server API.
+
+The environment login named by `ADMIN_USERNAME` is the base administrator. Sign
+in with that account and open **Users & Roles → Fellowship Leader → Create accounts from the fellowship leader roster** to
+select active roster members designated **Fellowship Leader**, review their
+fellowships, and create their logins. New credentials can be downloaded once in
+that browser session. Repeating setup skips linked accounts without resetting
+their passwords. The base administrator can also add future leaders manually
+and reset passwords. Other administrators cannot create or modify fellowship
+leader accounts.
+
+Users & Roles groups managed and configured staff accounts inside each role’s
+accordion. Account editors can change usernames, passwords, role assignments
+and active status. The base administrator can edit built-in role permissions;
+administrator roles retain Users & Roles access, and fellowship leaders retain
+their fellowship roster scope. Custom roles remain editable by administrators.
+Permissions apply to every account in the role immediately.
+
+The base administrator can save an existing configured staff login into managed
+accounts. Its old environment identity is then retired, including after a rename
+or deactivation; authentication never falls back to those credentials. Only the
+base recovery login remains controlled by hosting configuration. The service
+role key is required for all other staff authentication. Username changes and
+password resets revoke existing managed sessions.
+
+Fellowship leaders land on **Member Roster**, scoped to their assigned fellowship.
+They can edit personal details, add/import/remove brethren, create numbered
+cells, and create numbered BSCT groups within each cell. Assigning a leader also
+assigns their membership and designation. Editing a member's cell or fellowship
+clears any incompatible BSCT membership or leader assignment. Unassigned
+brethren remain visible in the breakdown. Public Mark Attendance remains open.
+
+Validation: `node --import tsx --test tests/**/*.test.ts`, `npm run lint`, and
+`npx tsc --noEmit --incremental false`. The transactional PostgreSQL checks in
+`tests/fellowship-structure.sql` run against a disposable database after applying
+the migrations and roll back their fixtures.
+

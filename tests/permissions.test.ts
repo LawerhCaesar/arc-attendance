@@ -20,9 +20,9 @@ test('built-in defaults preserve departments and restrict account management to 
   assert.ok(!DEFAULT_PERMISSIONS.pastor.includes('users'));
   assert.deepEqual(DEFAULT_PERMISSIONS.welfare, ['welfare']);
   assert.deepEqual(DEFAULT_PERMISSIONS.first_timers, ['first-timers']);
-  assert.deepEqual(DEFAULT_PERMISSIONS.fellowship_leader, ['entry']);
+  assert.deepEqual(DEFAULT_PERMISSIONS.fellowship_leader, ['members']);
   assert.equal(homeForPermissions({ role: 'custom', permissions: ['welfare'] }), '/admin');
-  assert.equal(homeForPermissions({ role: 'fellowship_leader', permissions: ['entry'] }), '/entry');
+  assert.equal(homeForPermissions({ role: 'fellowship_leader', permissions: DEFAULT_PERMISSIONS.fellowship_leader }), '/admin');
 });
 
 test('password policy prevents short passwords and bcrypt byte truncation', () => {

@@ -21,7 +21,7 @@ export const DEFAULT_PERMISSIONS: Record<BuiltinRole, Permission[]> = {
   admin: ALL_PERMISSIONS,
   pastor: TAB_OPTIONS.map(tab => tab.id),
   attendance: ['entry', 'past-entry'],
-  fellowship_leader: ['entry'],
+  fellowship_leader: ['members'],
   welfare: ['welfare'],
   first_timers: ['first-timers'],
 };
