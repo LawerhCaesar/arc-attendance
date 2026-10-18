@@ -8,15 +8,16 @@ import { validateEditableRolePermissions, validateUsername, type AccessRole, typ
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fetchAllRows } from '@/lib/pagination';
 import { isSuperAdmin } from '@/lib/super-admin';
+import { validateAccountEmail } from '@/lib/account-email';
 
 export const dynamic = 'force-dynamic';
-const accountFields = 'id, username, display_name, role_id, fellowship, member_id, configured_username, is_active, created_at, updated_at';
+const accountFields = 'id, username, email, display_name, role_id, fellowship, member_id, configured_username, is_active, created_at, updated_at';
 const roleFields = 'id, key, name, permissions, is_system';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function failure(error: unknown) {
   const code = (error as { code?: string })?.code;
-  if (code === '23505') return NextResponse.json({ error: 'That username, configured login or role name already has an account. Refresh and choose another username if needed.' }, { status: 409 });
+  if (code === '23505') return NextResponse.json({ error: 'That username, email, configured login or role name is already in use. Choose a different value.' }, { status: 409 });
   if (code === 'P0001') return NextResponse.json({ error: (error as { message?: string }).message || 'This change would remove the last administrator or alter a protected role.' }, { status: 409 });
   if (code === '23503') return NextResponse.json({ error: 'The selected role no longer exists. Refresh and try again.' }, { status: 409 });
   if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -37,11 +38,11 @@ export async function GET() {
         .eq('is_active', true).eq('designation', 'Fellowship Leader').order('fellowship').order('name').order('id').range(from, to)) : [],
     ]);
     const overridden = new Set(accounts.map(account => account.configured_username));
-    return NextResponse.json({ accounts, roles, fellowshipLeaders,
+    return NextResponse.json({ accounts, roles, fellowshipLeaders, birthdayEmailReady: Boolean(process.env.RESEND_API_KEY && process.env.BIRTHDAY_REMINDER_FROM),
       canManageFellowshipLeaders: isSuperAdmin(context), canEditSystemRoles: isSuperAdmin(context), canManageConfiguredAccounts: isSuperAdmin(context),
       currentAccountId: context?.accountId || null,
       configuredAccounts: configuredUsers().filter(user => !overridden.has(user.username.toLowerCase()))
-        .map(user => ({ username: user.username, role: user.role, fellowship: user.fellowship, isBaseAdmin: isSuperAdmin(user) })),
+        .map(user => ({ username: user.username, email: user.email, role: user.role, fellowship: user.fellowship, isBaseAdmin: isSuperAdmin(user) })),
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return failure(error); }
 }
@@ -104,7 +105,11 @@ async function save(request: NextRequest, editing: boolean) {
     const reserved = configuredUsers().find(user => user.username.toLowerCase() === username);
     const sourceUsername = source?.username.toLowerCase() || existing?.configured_username;
     if (reserved && reserved.username.toLowerCase() !== sourceUsername) throw new Error('This username belongs to an existing configured account. Choose another username.');
-    const record: Record<string, unknown> = { username, display_name: body.display_name.trim(), role_id: role.id, is_active: body.is_active, fellowship };
+    const email = validateAccountEmail(body.email === undefined ? existing?.email ?? source?.email : body.email,
+      role.key === 'fellowship_leader' && body.is_active);
+    const reservedEmail = email && configuredUsers().find(user => user.email === email || user.username.toLowerCase() === email);
+    if (reservedEmail && reservedEmail.username.toLowerCase() !== sourceUsername) throw new Error('This email belongs to an existing configured account. Choose another email.');
+    const record: Record<string, unknown> = { username, email, display_name: body.display_name.trim(), role_id: role.id, is_active: body.is_active, fellowship };
     if (source) record.configured_username = source.username.toLowerCase();
     if (typeof body.password === 'string' && body.password.length) record.password_hash = await hashPassword(validateNewPassword(body.password));
     else if (!editing) {
@@ -114,7 +119,7 @@ async function save(request: NextRequest, editing: boolean) {
     const query = editing ? admin.from('staff_accounts').update(record).eq('id', body.id) : admin.from('staff_accounts').insert(record);
     const { data, error } = await query.select(accountFields).single();
     if (error) throw error;
-    const sessionInvalidated = (context?.accountId === data.id && (existing?.username !== username || Boolean(record.password_hash))) ||
+    const sessionInvalidated = (context?.accountId === data.id && (existing?.username !== username || existing?.email !== email || Boolean(record.password_hash))) ||
       Boolean(source && context?.username.toLowerCase() === source.username.toLowerCase());
     return NextResponse.json({ account: data, sessionInvalidated }, { status: editing ? 200 : 201 });
   } catch (error) { return failure(error); }

@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { isSuperAdmin, fellowshipLeaderUsername } from '@/lib/super-admin';
 import { memberUuid } from '@/lib/member-scope';
 import { FELLOWSHIPS } from '@/lib/fellowships';
+import { validateAccountEmail } from '@/lib/account-email';
 
 export async function POST(request: NextRequest) {
   const context = await getAuthContext();
@@ -35,15 +36,20 @@ export async function POST(request: NextRequest) {
     const configuredNames = new Set(configuredUsers().map(account => account.username.toLowerCase()));
     const credentials = leaders.filter(leader => !existingIds.has(leader.id)).map(leader => ({
       memberId: leader.id, displayName: leader.name, fellowship: leader.fellowship,
+      email: validateAccountEmail(body.emails?.[leader.id], true),
       username: fellowshipLeaderUsername(leader.name, leader.id), password: randomBytes(18).toString('base64url'),
     }));
     if (credentials.some(account => configuredNames.has(account.username))) {
       return NextResponse.json({ error: 'A generated username is reserved by an environment account. Create that account manually with another username.' }, { status: 409 });
     }
+    const configuredEmails = new Set(configuredUsers().flatMap(account => [account.email, account.username.toLowerCase()]));
+    if (new Set(credentials.map(account => account.email)).size !== credentials.length || credentials.some(account => configuredEmails.has(account.email!))) {
+      return NextResponse.json({ error: 'Each leader needs a different email that is not used by a configured account.' }, { status: 409 });
+    }
     if (!credentials.length) return NextResponse.json({ credentials: [], skipped: existingIds.size });
     const records = [];
     for (const account of credentials) records.push({
-      username: account.username, display_name: account.displayName, fellowship: account.fellowship,
+      username: account.username, email: account.email, display_name: account.displayName, fellowship: account.fellowship,
       member_id: account.memberId, role_id: role.id, is_active: true, password_hash: await hashPassword(account.password),
     });
     // Concurrent requests cannot reset an existing account's password.
@@ -54,6 +60,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ credentials: credentials.filter(account => createdIds.has(account.memberId)), skipped: memberIds.length - createdIds.size },
       { status: 201, headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
+    if (error instanceof Error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if ((error as { code?: string }).code === '23505') return NextResponse.json({ error: 'An email or username is already assigned to another account.' }, { status: 409 });
     console.error('Fellowship account provisioning failed:', (error as { code?: string }).code || 'unknown');
     return NextResponse.json({ error: 'Account setup failed. Refresh Users & Roles to check existing accounts before retrying.' }, { status: 503 });
   }

@@ -2,10 +2,10 @@ import { ALL_PERMISSIONS, validateRolePermissions, type Permission } from './per
 
 export interface AccessRole { id: string; key: string; name: string; permissions: Permission[]; is_system: boolean }
 export interface ManagedAccount {
-  id: string; username: string; display_name: string; role_id: string;
+  id: string; username: string; email?: string | null; display_name: string; role_id: string;
   fellowship: string | null; member_id?: string | null; configured_username?: string | null; is_active: boolean;
 }
-export interface ConfiguredAccount { username: string; role: string; fellowship?: string; isBaseAdmin: boolean }
+export interface ConfiguredAccount { username: string; email?: string; role: string; fellowship?: string; isBaseAdmin: boolean }
 
 export function roleAccountGroups(roles: AccessRole[], accounts: ManagedAccount[], configured: ConfiguredAccount[]) {
   return roles.map(role => ({

@@ -7,15 +7,16 @@ import { roleAccountGroups, type AccessRole, type ManagedAccount, type Configure
 import { FELLOWSHIPS } from '@/lib/fellowships';
 
 interface Leader { id: string; name: string; fellowship: string }
-interface LeaderCredential { memberId: string; displayName: string; fellowship: string; username: string; password: string }
+interface LeaderCredential { memberId: string; displayName: string; fellowship: string; username: string; email: string; password: string }
 interface AccessData {
   roles: AccessRole[]; accounts: ManagedAccount[]; configuredAccounts: ConfiguredAccount[];
   currentAccountId: string | null; canManageFellowshipLeaders: boolean; canEditSystemRoles: boolean;
   canManageConfiguredAccounts: boolean; fellowshipLeaders: Leader[];
+  birthdayEmailReady: boolean;
 }
 const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200';
 const actionClass = 'rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-40';
-const blankAccount = { id: '', username: '', display_name: '', role_id: '', fellowship: '', is_active: true, password: '', configuredUsername: '' };
+const blankAccount = { id: '', username: '', email: '', display_name: '', role_id: '', fellowship: '', is_active: true, password: '', configuredUsername: '' };
 
 export default function AccessManagement() {
   const [data, setData] = useState<AccessData | null>(null);
@@ -28,6 +29,7 @@ export default function AccessManagement() {
   const [resetPassword, setResetPassword] = useState(false);
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
   const [selectedLeaders, setSelectedLeaders] = useState<string[]>([]);
+  const [leaderEmails, setLeaderEmails] = useState<Record<string, string>>({});
   const [credentials, setCredentials] = useState<LeaderCredential[]>([]);
   const dialog = useRef<HTMLDialogElement>(null);
   const initialFocus = useRef<HTMLInputElement>(null);
@@ -59,10 +61,10 @@ export default function AccessManagement() {
     setAccount({ ...blankAccount, role_id: roleId }); setResetPassword(false); openEditor('account');
   };
   const editAccount = (item: ManagedAccount, passwordOnly = false) => {
-    setAccount({ ...blankAccount, ...item, fellowship: item.fellowship || '' }); setResetPassword(passwordOnly); openEditor('account');
+    setAccount({ ...blankAccount, ...item, email: item.email || '', fellowship: item.fellowship || '' }); setResetPassword(passwordOnly); openEditor('account');
   };
   const editConfigured = (item: ConfiguredAccount, roleId: string, passwordOnly = false) => {
-    setAccount({ ...blankAccount, username: item.username, display_name: item.username, role_id: roleId,
+    setAccount({ ...blankAccount, username: item.username, email: item.email || '', display_name: item.username, role_id: roleId,
       fellowship: item.fellowship || '', configuredUsername: item.username });
     setResetPassword(passwordOnly); openEditor('account');
   };
@@ -83,7 +85,7 @@ export default function AccessManagement() {
       if (!response.ok) throw new Error(result.error || 'Unable to save changes.');
       if (editor === 'account') expandRole(result.account.role_id); else expandRole(result.role.id);
       setEditor(null); setAccount(blankAccount);
-      setNotice(editor === 'role' ? 'Role saved. Permissions now apply to the accounts in this role.' : 'Account saved. Username changes, password resets, role changes and deactivation end previous sessions.');
+      setNotice(editor === 'role' ? 'Role saved. Permissions now apply to the accounts in this role.' : 'Account saved. Changes to sign-in details, roles or account status end previous sessions.');
       if (result.sessionInvalidated) { window.location.assign('/admin/login'); return; }
       await load();
     } catch (caught) { setError((caught as Error).message); }
@@ -98,7 +100,7 @@ export default function AccessManagement() {
     setBusy(true); setError(''); setNotice('');
     try {
       const response = await fetch('/api/admin/access/fellowship-leaders', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberIds: selectedLeaders }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberIds: selectedLeaders, emails: leaderEmails }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Unable to create leader accounts.');
@@ -109,7 +111,7 @@ export default function AccessManagement() {
     finally { setBusy(false); }
   };
   const downloadCredentials = () => {
-    const content = [`Sign in: ${window.location.origin}/admin/login`, '', ...credentials.map(item => `${item.displayName} · ${item.fellowship}\nUsername: ${item.username}\nPassword: ${item.password}\n`) ].join('\n');
+    const content = [`Sign in: ${window.location.origin}/admin/login`, '', ...credentials.map(item => `${item.displayName} · ${item.fellowship}\nUsername: ${item.username}\nEmail: ${item.email}\nPassword: ${item.password}\n`) ].join('\n');
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = 'fellowship-leader-credentials.txt'; link.click(); URL.revokeObjectURL(url);
   };
@@ -117,7 +119,7 @@ export default function AccessManagement() {
 
   return <div className="space-y-5 text-gray-900">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><h2 className="text-2xl font-bold text-gray-950">Users &amp; Roles</h2><p className="mt-1 text-sm text-gray-600">Open a role to see its accounts, edit usernames, reset passwords and manage shared permissions.</p></div>
+      <div><h2 className="text-2xl font-bold text-gray-950">Users &amp; Roles</h2><p className="mt-1 text-sm text-gray-600">Open a role to manage account emails, usernames, passwords and shared permissions.</p></div>
       {data && <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => addAccount(data.roles.find(item => item.key === 'welfare')?.id || '')} className={actionClass}>Add Account</button><button type="button" disabled={busy} onClick={() => { setRole({ id: '', name: '', permissions: [] }); openEditor('role'); }} className={actionClass}>Create Role</button></div>}
     </div>
     {error && !editor && <DismissibleBanner role="alert" onDismiss={() => setError('')} className="rounded-lg bg-red-50 p-4 text-sm text-red-800">{error} <button type="button" onClick={() => { setError(''); void load(); }} className="ml-2 underline">Retry loading</button></DismissibleBanner>}
@@ -137,19 +139,20 @@ export default function AccessManagement() {
           <div className="space-y-4 border-t border-gray-100 p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-gray-900">Accounts in {item.name}</h3><div className="flex flex-wrap gap-2">{canEditRole && <button type="button" disabled={busy} onClick={() => editRole(item)} className={actionClass}>Edit role permissions</button>}{canManageAccounts && <button type="button" disabled={busy} onClick={() => addAccount(item.id)} className={actionClass}>Add account to role</button>}</div></div>
             {!canManageAccounts && <p className="text-sm text-amber-900">Only the base administrator can create or manage fellowship leader accounts.</p>}
+            {item.key === 'fellowship_leader' && <div className="space-y-1 rounded-lg bg-blue-50 p-3 text-sm text-blue-950"><p>Leaders receive birthday reminders for brethren in their assigned fellowship, seven days and one day before each birthday.</p>{item.accounts.some(user => user.is_active && !user.email) && <p className="font-semibold">{item.accounts.filter(user => user.is_active && !user.email).length} active leader accounts need an email address. Use Edit account to add it.</p>}{!data.birthdayEmailReady && <p className="font-semibold text-amber-900">Email delivery setup is pending. The base administrator needs to finish the sender setup.</p>}</div>}
             {!item.count && <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">No accounts in this role yet.</p>}
             <div className="divide-y divide-gray-100">{item.accounts.map(user => <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="min-w-0"><p className="font-semibold text-gray-950">{user.display_name} {user.id === data.currentAccountId && <span className="text-xs text-blue-700">You</span>}</p><p className="break-all text-sm text-gray-700">@{user.username}</p><p className="mt-1 text-xs text-gray-600">{user.is_active ? 'Active' : 'Disabled'}{user.fellowship ? ` · ${user.fellowship}` : ''}</p></div>
+              <div className="min-w-0"><p className="font-semibold text-gray-950">{user.display_name} {user.id === data.currentAccountId && <span className="text-xs text-blue-700">You</span>}</p><p className="break-all text-sm text-gray-700">@{user.username}</p><p className="break-all text-sm text-gray-700">{user.email || 'No email added'}</p><p className="mt-1 text-xs text-gray-600">{user.is_active ? 'Active' : 'Disabled'}{user.fellowship ? ` · ${user.fellowship}` : ''}</p></div>
               {canManageAccounts && <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => editAccount(user)} className={actionClass} aria-label={`Edit account for ${user.display_name}`}>Edit account</button><button type="button" disabled={busy} onClick={() => editAccount(user, true)} className={actionClass} aria-label={`Reset password for ${user.display_name}`}>Reset password</button></div>}
             </div>)}
             {item.configuredAccounts.map(user => <div key={`configured-${user.username}`} className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="min-w-0"><p className="break-all font-semibold text-gray-950">@{user.username}</p><p className="mt-1 text-xs text-gray-600">{user.isBaseAdmin ? 'Base administrator · Recovery login' : 'Existing configured login'}{user.fellowship ? ` · ${user.fellowship}` : ''}</p>{user.isBaseAdmin && <p className="mt-1 text-xs text-gray-600">Manage this recovery login’s credentials in hosting configuration.</p>}</div>
+              <div className="min-w-0"><p className="break-all font-semibold text-gray-950">@{user.username}</p><p className="break-all text-sm text-gray-700">{user.email || 'No email added'}</p><p className="mt-1 text-xs text-gray-600">{user.isBaseAdmin ? 'Base administrator · Recovery login' : 'Existing configured login'}{user.fellowship ? ` · ${user.fellowship}` : ''}</p>{user.isBaseAdmin && <p className="mt-1 text-xs text-gray-600">Manage this recovery login’s credentials and optional ADMIN_EMAIL in hosting configuration.</p>}</div>
               {!user.isBaseAdmin && data.canManageConfiguredAccounts && canManageAccounts && <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => editConfigured(user, item.id)} className={actionClass} aria-label={`Edit account for ${user.username}`}>Edit account</button><button type="button" disabled={busy} onClick={() => editConfigured(user, item.id, true)} className={actionClass} aria-label={`Reset password for ${user.username}`}>Reset password</button></div>}
             </div>)}</div>
             {item.key === 'fellowship_leader' && data.canManageFellowshipLeaders && <details className="rounded-lg border border-blue-100 bg-blue-50/40 p-4"><summary className="cursor-pointer text-sm font-semibold text-blue-950">Create accounts from the fellowship leader roster · {eligibleLeaders.length} ready</summary>
-              <p className="my-3 text-sm text-gray-700">Create logins for active brethren designated Fellowship Leader. Each account receives its own password and assigned fellowship.</p>
+              <p className="my-3 text-sm text-gray-700">Create logins for active brethren designated Fellowship Leader. Add each selected leader’s email for sign-in and birthday reminders.</p>
               <label className="flex items-center gap-2 text-sm font-semibold text-gray-700"><input type="checkbox" disabled={busy || !eligibleLeaders.length} checked={Boolean(eligibleLeaders.length) && eligibleLeaders.slice(0, 100).every(leader => selectedLeaders.includes(leader.id))} onChange={event => setSelectedLeaders(event.target.checked ? eligibleLeaders.slice(0, 100).map(leader => leader.id) : [])} />Select eligible leaders (up to 100)</label>
-              <div className="my-3 max-h-72 divide-y divide-blue-100 overflow-y-auto">{data.fellowshipLeaders.map(leader => <label key={leader.id} className="flex items-center gap-3 py-3 text-sm text-gray-800"><input type="checkbox" disabled={busy || linkedMembers.has(leader.id) || !FELLOWSHIPS.includes(leader.fellowship)} checked={selectedLeaders.includes(leader.id)} onChange={event => setSelectedLeaders(current => event.target.checked ? [...current, leader.id].slice(0, 100) : current.filter(id => id !== leader.id))} /><span><span className="block font-semibold">{leader.name}</span><span className="text-xs text-gray-600">{leader.fellowship || 'Unassigned'} · {linkedMembers.has(leader.id) ? 'Account already linked' : FELLOWSHIPS.includes(leader.fellowship) ? 'Ready to create' : 'Assign a fellowship in Member Roster first'}</span></span></label>)}</div>
+              <div className="my-3 max-h-72 divide-y divide-blue-100 overflow-y-auto">{data.fellowshipLeaders.map(leader => <div key={leader.id} className="space-y-2 py-3 text-sm text-gray-800"><label className="flex items-center gap-3"><input type="checkbox" disabled={busy || linkedMembers.has(leader.id) || !FELLOWSHIPS.includes(leader.fellowship)} checked={selectedLeaders.includes(leader.id)} onChange={event => setSelectedLeaders(current => event.target.checked ? [...current, leader.id].slice(0, 100) : current.filter(id => id !== leader.id))} /><span><span className="block font-semibold">{leader.name}</span><span className="text-xs text-gray-600">{leader.fellowship || 'Unassigned'} · {linkedMembers.has(leader.id) ? 'Account already linked' : FELLOWSHIPS.includes(leader.fellowship) ? 'Ready to create' : 'Assign a fellowship in Member Roster first'}</span></span></label>{selectedLeaders.includes(leader.id) && <label className="block text-xs font-medium">Email for {leader.name}<input type="email" required maxLength={254} autoComplete="off" disabled={busy} value={leaderEmails[leader.id] || ''} onChange={event => setLeaderEmails(current => ({ ...current, [leader.id]: event.target.value }))} className={inputClass} /></label>}</div>)}</div>
               {!data.fellowshipLeaders.length && <p className="my-3 text-sm text-gray-600">Designate fellowship leaders in Member Roster to create their accounts here.</p>}
               <button type="button" disabled={busy || !selectedLeaders.length} onClick={provisionLeaders} className={actionClass}>{busy ? 'Saving…' : `Create ${selectedLeaders.length} Leader Accounts`}</button>
               {credentials.length > 0 && <div className="mt-4 space-y-3 rounded-lg bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-950">Download new credentials before leaving this page and share them privately with each leader.</p><button type="button" onClick={downloadCredentials} className={actionClass}>Download {credentials.length} New Credentials</button></div>}
@@ -168,6 +171,7 @@ export default function AccessManagement() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-medium text-gray-700">Display name<input required maxLength={100} value={account.display_name} onChange={event => setAccount({ ...account, display_name: event.target.value })} className={inputClass} /></label>
               <label className="text-sm font-medium text-gray-700">Username<input ref={resetPassword ? undefined : initialFocus} required minLength={3} maxLength={64} autoComplete="off" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}" value={account.username} onChange={event => setAccount({ ...account, username: event.target.value })} className={inputClass} /></label>
+              <label className="text-sm font-medium text-gray-700 sm:col-span-2">Email address<input type="email" maxLength={254} autoComplete="off" required={selectedRole?.key === 'fellowship_leader' && account.is_active} value={account.email} onChange={event => setAccount({ ...account, email: event.target.value })} className={inputClass} /><span className="mt-1 block text-xs font-normal text-gray-600">Sign in with this email or username using the same password.{selectedRole?.key === 'fellowship_leader' ? ' Birthday reminders for this fellowship are sent here.' : ''}</span></label>
               <label className="text-sm font-medium text-gray-700">Role<select required value={account.role_id} onChange={event => setAccount({ ...account, role_id: event.target.value })} className={inputClass}><option value="">Choose role</option>{data?.roles.filter(item => item.key !== 'fellowship_leader' || data.canManageFellowshipLeaders).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">{account.id || account.configuredUsername ? 'New password' : 'Password'}<input ref={resetPassword ? initialFocus : undefined} type="password" autoComplete="new-password" required={resetPassword || (!account.id && !account.configuredUsername)} minLength={12} maxLength={72} value={account.password} onChange={event => setAccount({ ...account, password: event.target.value })} className={inputClass} /><span className="mt-1 block text-xs font-normal text-gray-600">{(account.id || account.configuredUsername) && !resetPassword ? 'Leave blank to keep the current password. ' : ''}New passwords need at least 12 characters.</span></label>
               {selectedRole?.key === 'fellowship_leader' && <label className="text-sm font-medium text-gray-700">Assigned fellowship<select required value={account.fellowship} onChange={event => setAccount({ ...account, fellowship: event.target.value })} className={inputClass}><option value="">Choose fellowship</option>{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>}
