@@ -210,27 +210,31 @@ the migrations and roll back their fixtures.
 
 ## Account emails and fellowship birthday reminders
 
-Apply `supabase/migrations/20261018131755_staff_account_email.sql` before deploying
-email sign-in. In **Users & Roles**, open a role and use **Edit account** to add
-an email. Staff can sign in with either their username or email and the same
-password. Emails are normalized, unique across managed accounts, and optional
-for existing accounts. Creating or editing an active fellowship leader requires
-an email. Changing an email revokes existing sessions. The base recovery login
-can use `ADMIN_EMAIL`; other configured logins accept `email` in `APP_USERS_JSON`
-or can be moved into managed accounts to edit their email in the app.
+Apply the account email migration and
+`supabase/migrations/20261018140319_staff_self_service_email.sql` before deploying
+self-service account settings. Every signed-in staff member can open **My account**
+from the sidebar or top navigation and save their own email by confirming their
+current password. The base recovery administrator can use this too; its password
+and full recovery access remain controlled by hosting configuration.
 
-The existing daily cron runs at **08:00 Africa/Accra** and emails each active
-fellowship leader about active brethren in their assigned fellowship, seven days
-and one day before birthdays. Disabled accounts and retired configured accounts
-are excluded. The existing central birthday recipient is retained through
-`BIRTHDAY_REMINDER_TO` (defaulting to the original central recipient). Every
-recipient gets a separate message, with delivery history and recipient-specific
-provider idempotency keys preventing duplicate sends.
+Staff can sign in with their saved email or username and the same password.
+Emails are normalized and unique across managed and configured accounts.
+**Users & Roles → Edit account** remains available for administrators. An email
+is optional when creating any account, including fellowship leaders. Accounts
+join birthday reminders automatically once an email is saved. Managed email
+changes revoke other sessions while keeping the device saving its profile signed in.
+
+The daily cron runs at **08:00 Africa/Accra**, seven days and one day before
+birthdays. Active fellowship leaders receive reminders for their own fellowship;
+active administrators, including the base administrator, receive reminders for
+all fellowships. Disabled accounts, accounts without an email, and retired
+configured logins are excluded. `BIRTHDAY_REMINDER_TO` can optionally specify an
+additional central recipient. Every recipient gets a separate message, with
+delivery history and provider idempotency keys preventing duplicate sends.
 
 Production needs `RESEND_API_KEY`, a verified sender in `BIRTHDAY_REMINDER_FROM`
 (for example, `ARC Attendance <birthdays@your-verified-domain>`), `CRON_SECRET`,
 and `SUPABASE_SERVICE_ROLE_KEY`. Store keys only in Vercel's server environment.
-Users & Roles shows whether email delivery is configured and which leaders need
-an email. Sending stays unavailable until the provider and verified sender are
+My account and Users & Roles show whether email delivery is configured. Sending stays unavailable until the provider and verified sender are
 configured; no reminders are sent during tests.
 

@@ -38,7 +38,8 @@ function fixture(options: { providerFailure?: boolean; historyFailure?: boolean;
       { email: 'leader@example.com', fellowship: 'Shalach', role_id: 'leader-role', is_active: true, configured_username: null },
       { email: 'other@example.com', fellowship: 'Pleroma', role_id: 'leader-role', is_active: true, configured_username: null },
     ];
-    else if (url.pathname.endsWith('/staff_roles')) rows = [{ id: 'leader-role' }];
+    else if (url.pathname.endsWith('/staff_roles')) rows = [{ id: 'leader-role', key: 'fellowship_leader' }, { id: 'admin-role', key: 'admin' }];
+    else if (url.pathname.endsWith('/staff_account_contacts')) rows = [];
     else if (url.pathname.endsWith('/notification_deliveries')) {
       if (init?.method === 'POST') {
         history.add(JSON.parse(String(init.body)).recipient);

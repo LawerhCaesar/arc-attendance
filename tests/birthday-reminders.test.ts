@@ -33,3 +33,12 @@ test('each leader receives only their fellowship birthdays and duplicate recipie
   assert.equal(new Set(jobs.map(job => job.idempotencyKey)).size, jobs.length);
   assert.deepEqual(jobs.map(job => job.idempotencyKey), birthdayReminderJobs(members, contacts, '2026-10-18', 'office@example.com').map(job => job.idempotencyKey));
 });
+
+test('saved admin emails receive all fellowships and future accounts join reminders once they have an email', () => {
+  const configured = [{ username: 'base', role: 'admin', email: 'base@example.com' }];
+  const member = { id: 'member', name: 'Member', fellowship: 'Pleroma', birthday: '25-10' };
+  const initial = birthdayLeaderContacts([account(null, 'Pleroma')], 'leader-role', configured, 'admin-role');
+  assert.deepEqual(birthdayReminderJobs([member], initial, '2026-10-18').map(job => job.recipient), ['base@example.com']);
+  const updated = birthdayLeaderContacts([account('new.leader@example.com', 'Pleroma'), account('managed.admin@example.com', '', { role_id: 'admin-role' })], 'leader-role', configured, 'admin-role');
+  assert.deepEqual(birthdayReminderJobs([member], updated, '2026-10-18').map(job => job.recipient).sort(), ['base@example.com', 'managed.admin@example.com', 'new.leader@example.com']);
+});

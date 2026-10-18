@@ -9,6 +9,7 @@ import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fetchAllRows } from '@/lib/pagination';
 import { isSuperAdmin } from '@/lib/super-admin';
 import { validateAccountEmail } from '@/lib/account-email';
+import { configuredUsersWithEmail } from '@/lib/account-profile';
 
 export const dynamic = 'force-dynamic';
 const accountFields = 'id, username, email, display_name, role_id, fellowship, member_id, configured_username, is_active, created_at, updated_at';
@@ -31,17 +32,18 @@ export async function GET() {
   try {
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error('Account management requires server configuration.');
-    const [accounts, roles, fellowshipLeaders] = await Promise.all([
+    const [accounts, roles, fellowshipLeaders, configured] = await Promise.all([
       fetchAllRows<ManagedAccount>((from, to) => admin.from('staff_accounts').select(accountFields).order('username').order('id').range(from, to)),
       fetchAllRows<AccessRole>((from, to) => admin.from('staff_roles').select(roleFields).order('name').order('id').range(from, to)),
       isSuperAdmin(context) ? fetchAllRows((from, to) => admin.from('members').select('id, name, fellowship')
         .eq('is_active', true).eq('designation', 'Fellowship Leader').order('fellowship').order('name').order('id').range(from, to)) : [],
+      configuredUsersWithEmail(admin),
     ]);
     const overridden = new Set(accounts.map(account => account.configured_username));
     return NextResponse.json({ accounts, roles, fellowshipLeaders, birthdayEmailReady: Boolean(process.env.RESEND_API_KEY && process.env.BIRTHDAY_REMINDER_FROM),
       canManageFellowshipLeaders: isSuperAdmin(context), canEditSystemRoles: isSuperAdmin(context), canManageConfiguredAccounts: isSuperAdmin(context),
       currentAccountId: context?.accountId || null,
-      configuredAccounts: configuredUsers().filter(user => !overridden.has(user.username.toLowerCase()))
+      configuredAccounts: configured.filter(user => !overridden.has(user.username.toLowerCase()))
         .map(user => ({ username: user.username, email: user.email, role: user.role, fellowship: user.fellowship, isBaseAdmin: isSuperAdmin(user) })),
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return failure(error); }
@@ -95,8 +97,9 @@ async function save(request: NextRequest, editing: boolean) {
       if (previousRole.data.key === 'fellowship_leader' && !isSuperAdmin(context)) return forbidden('Only the base administrator can create or manage fellowship leader accounts.');
       if (context?.accountId === body.id && (!body.is_active || role.key !== 'admin')) throw new Error('You cannot remove your own administrator access.');
     }
+    const configured = await configuredUsersWithEmail(admin);
     const source = !editing && typeof body.configuredUsername === 'string'
-      ? configuredUsers().find(user => user.username.toLowerCase() === body.configuredUsername.toLowerCase()) : undefined;
+      ? configured.find(user => user.username.toLowerCase() === body.configuredUsername.toLowerCase()) : undefined;
     if (body.configuredUsername && !source) throw new Error('Configured account not found. Refresh and try again.');
     if (source && (!isSuperAdmin(context) || isSuperAdmin(source))) return forbidden('Only the base administrator can manage configured staff logins. Base administrator credentials remain in hosting configuration.');
 
@@ -105,9 +108,8 @@ async function save(request: NextRequest, editing: boolean) {
     const reserved = configuredUsers().find(user => user.username.toLowerCase() === username);
     const sourceUsername = source?.username.toLowerCase() || existing?.configured_username;
     if (reserved && reserved.username.toLowerCase() !== sourceUsername) throw new Error('This username belongs to an existing configured account. Choose another username.');
-    const email = validateAccountEmail(body.email === undefined ? existing?.email ?? source?.email : body.email,
-      role.key === 'fellowship_leader' && body.is_active);
-    const reservedEmail = email && configuredUsers().find(user => user.email === email || user.username.toLowerCase() === email);
+    const email = validateAccountEmail(body.email === undefined ? existing?.email ?? source?.email : body.email);
+    const reservedEmail = email && configured.find(user => user.email === email || user.username.toLowerCase() === email);
     if (reservedEmail && reservedEmail.username.toLowerCase() !== sourceUsername) throw new Error('This email belongs to an existing configured account. Choose another email.');
     const record: Record<string, unknown> = { username, email, display_name: body.display_name.trim(), role_id: role.id, is_active: body.is_active, fellowship };
     if (source) record.configured_username = source.username.toLowerCase();

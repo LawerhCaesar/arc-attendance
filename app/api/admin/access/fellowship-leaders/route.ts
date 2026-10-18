@@ -7,6 +7,7 @@ import { isSuperAdmin, fellowshipLeaderUsername } from '@/lib/super-admin';
 import { memberUuid } from '@/lib/member-scope';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { validateAccountEmail } from '@/lib/account-email';
+import { configuredUsersWithEmail } from '@/lib/account-profile';
 
 export async function POST(request: NextRequest) {
   const context = await getAuthContext();
@@ -36,15 +37,16 @@ export async function POST(request: NextRequest) {
     const configuredNames = new Set(configuredUsers().map(account => account.username.toLowerCase()));
     const credentials = leaders.filter(leader => !existingIds.has(leader.id)).map(leader => ({
       memberId: leader.id, displayName: leader.name, fellowship: leader.fellowship,
-      email: validateAccountEmail(body.emails?.[leader.id], true),
+      email: validateAccountEmail(body.emails?.[leader.id]),
       username: fellowshipLeaderUsername(leader.name, leader.id), password: randomBytes(18).toString('base64url'),
     }));
     if (credentials.some(account => configuredNames.has(account.username))) {
       return NextResponse.json({ error: 'A generated username is reserved by an environment account. Create that account manually with another username.' }, { status: 409 });
     }
-    const configuredEmails = new Set(configuredUsers().flatMap(account => [account.email, account.username.toLowerCase()]));
-    if (new Set(credentials.map(account => account.email)).size !== credentials.length || credentials.some(account => configuredEmails.has(account.email!))) {
-      return NextResponse.json({ error: 'Each leader needs a different email that is not used by a configured account.' }, { status: 409 });
+    const configuredEmails = new Set((await configuredUsersWithEmail(admin)).flatMap(account => [account.email, account.username.toLowerCase()]));
+    const suppliedEmails = credentials.flatMap(account => account.email ? [account.email] : []);
+    if (new Set(suppliedEmails).size !== suppliedEmails.length || suppliedEmails.some(email => configuredEmails.has(email))) {
+      return NextResponse.json({ error: 'Each supplied email must be different and not used by a configured account.' }, { status: 409 });
     }
     if (!credentials.length) return NextResponse.json({ credentials: [], skipped: existingIds.size });
     const records = [];

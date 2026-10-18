@@ -17,7 +17,8 @@ function fixture(active = true, hasOverride = false) {
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
     let rows: unknown[];
-    if (url.pathname.endsWith('/staff_accounts')) {
+    if (url.pathname.endsWith('/staff_account_contacts')) rows = [];
+    else if (url.pathname.endsWith('/staff_accounts')) {
       if (url.searchParams.has('configured_username')) rows = hasOverride ? [{ id: 'override' }] : [];
       else rows = ['eq.ama', 'eq.ama@example.com'].includes(url.searchParams.get('username') || url.searchParams.get('email') || '') ? [{ ...account, is_active: active }] : [];
     } else rows = [{ key: 'fellowship_leader', permissions: ['members'] }];
@@ -50,7 +51,9 @@ test('configured email sign-in is retired by a managed override, including disab
   assert.equal(await login.authenticateStaffLogin('configured@example.com', 'configured-password'), null);
 });
 
-test('the configured base admin can sign in by email without depending on the database', async () => {
-  globalThis.fetch = async () => { throw new Error('Recovery must not query the database'); };
+test('the configured base admin can use its email, with username recovery independent of the database', async () => {
+  fixture();
   assert.equal((await login.authenticateStaffLogin(' BASE@EXAMPLE.COM ', 'recovery-password'))?.username, 'base-admin');
+  globalThis.fetch = async () => { throw new Error('Recovery must not query the database'); };
+  assert.equal((await login.authenticateStaffLogin('base-admin', 'recovery-password'))?.username, 'base-admin');
 });

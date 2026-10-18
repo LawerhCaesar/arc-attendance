@@ -3,16 +3,18 @@ import { configuredUsers } from './configured-users';
 import { loginLookup } from './account-email';
 import { getSupabaseAdmin } from './supabase-admin';
 import { isSuperAdmin } from './super-admin';
+import { configuredUsersWithEmail } from './account-profile';
 
 export async function authenticateStaffLogin(identifier: string, password: string): Promise<AuthContext | null> {
   const { field, value } = loginLookup(identifier);
-  const configuredMatches = configuredUsers().filter(user => user.username.toLowerCase() === value || user.email === value);
+  const admin = getSupabaseAdmin();
+  const users = field === 'email' && admin ? await configuredUsersWithEmail(admin) : configuredUsers();
+  const configuredMatches = users.filter(user => user.username.toLowerCase() === value || (field === 'email' && user.email === value));
   if (configuredMatches.length > 1) return null;
   const configured = configuredMatches[0];
   if (configured && isSuperAdmin(configured)) {
     return await verifyPassword(password, configured.password) ? configuredAuthContext(configured) : null;
   }
-  const admin = getSupabaseAdmin();
   if (!admin && !configured) throw new Error('Account service unavailable.');
   const result = admin ? await admin.from('staff_accounts')
     .select('id, username, password_hash, role_id, fellowship, is_active, session_version').eq(field, value).maybeSingle()

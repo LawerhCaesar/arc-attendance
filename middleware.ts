@@ -64,6 +64,7 @@ export async function middleware(request: NextRequest) {
 
   if (
     (pathname.startsWith('/admin') && pathname !== '/admin/login') ||
+    pathname.startsWith('/account') ||
     pathname.startsWith('/welfare') ||
     pathname.startsWith('/first-timers')
   ) {
@@ -81,5 +82,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/:path*', '/admin/:path*', '/welfare/:path*', '/first-timers/:path*'],
+  matcher: ['/api/:path*', '/admin/:path*', '/account/:path*', '/welfare/:path*', '/first-timers/:path*'],
 };

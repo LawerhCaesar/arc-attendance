@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dateInAccra } from '@/lib/birthdays';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { configuredUsers } from '@/lib/configured-users';
+import { configuredUsersWithEmail } from '@/lib/account-profile';
 import { birthdayLeaderContacts, birthdayReminderJobs, type ReminderAccount } from '@/lib/birthday-reminders';
 import { fetchAllRows } from '@/lib/pagination';
-
-const defaultRecipient = 'lakumbie@gmail.com';
 
 const escapeHtml = (value: string) => value
   .replace(/&/g, '&amp;')
@@ -23,7 +21,7 @@ export async function GET(request: NextRequest) {
   const admin = getSupabaseAdmin();
   const resendKey = process.env.RESEND_API_KEY;
   const from = process.env.BIRTHDAY_REMINDER_FROM;
-  const centralRecipient = process.env.BIRTHDAY_REMINDER_TO || defaultRecipient;
+  const centralRecipient = process.env.BIRTHDAY_REMINDER_TO;
   if (!admin || !resendKey || !from) {
     return NextResponse.json(
       { error: 'SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, and BIRTHDAY_REMINDER_FROM are required' },
@@ -32,15 +30,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [members, accounts, leaderRole] = await Promise.all([
+    const [members, accounts, roles, configured] = await Promise.all([
       fetchAllRows<{ id: string; name: string; fellowship: string; birthday: string }>((from, to) => admin
         .from('members').select('id, name, fellowship, birthday').eq('is_active', true).order('id').range(from, to)),
       fetchAllRows<ReminderAccount>((from, to) => admin.from('staff_accounts')
         .select('email, fellowship, role_id, is_active, configured_username').order('id').range(from, to)),
-      admin.from('staff_roles').select('id').eq('key', 'fellowship_leader').single(),
+      admin.from('staff_roles').select('id,key').in('key', ['fellowship_leader', 'admin']),
+      configuredUsersWithEmail(admin),
     ]);
-    if (leaderRole.error) throw leaderRole.error;
-    const contacts = birthdayLeaderContacts(accounts, leaderRole.data.id, configuredUsers());
+    if (roles.error) throw roles.error;
+    const contacts = birthdayLeaderContacts(accounts, roles.data.find(role => role.key === 'fellowship_leader')?.id || null,
+      configured, roles.data.find(role => role.key === 'admin')?.id || null);
     const jobs = birthdayReminderJobs(members, contacts, dateInAccra(), centralRecipient);
     let sent = 0;
     let skipped = 0;

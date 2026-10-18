@@ -44,10 +44,10 @@ function SidebarContent({ navigation, activeTab, onNavigate, onLogout, username,
     </nav>
     <div className="shrink-0 space-y-4 border-t border-white/10 p-4 lg:space-y-3 lg:p-3">
       <Link href="/entry" className="flex items-center justify-between rounded-lg border border-white/15 px-3 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-400 lg:py-2">Record Attendance<span aria-hidden="true">↗</span></Link>
-      {!loading && <div className="flex items-start gap-3 px-1">
+      {!loading && <Link href="/account" aria-label="My account" className="flex items-start gap-3 rounded-lg px-1 focus:outline-none focus:ring-2 focus:ring-blue-400">
         <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-blue-200">{username.slice(0, 1).toUpperCase() || 'S'}</span>
-        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white" title={username}>{username}</p><p className="mt-0.5 text-xs text-slate-400">{roleLabel}{fellowship ? ` · ${fellowship}` : ''}</p></div>
-      </div>}
+        <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white" title={username}>{username}</p><p className="text-xs text-blue-200">My account</p><p className="mt-0.5 text-xs text-slate-400">{roleLabel}{fellowship ? ` · ${fellowship}` : ''}</p></div>
+      </Link>}
       {!loading && <button type="button" onClick={onLogout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 lg:py-1.5"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M9 5H5v14h4M10 12h10m-4-4 4 4-4 4" strokeLinecap="round" strokeLinejoin="round" /></svg>Sign Out</button>}
     </div>
   </div>;
