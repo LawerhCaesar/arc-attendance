@@ -2,6 +2,7 @@ import type { AttendanceRecord, Member } from './database';
 import { nextBirthday } from './birthdays';
 import { normalizeDuplicatePhone } from './member-duplicates';
 import { excludeArchivedAttendance } from './archived-attendance';
+import type { RosterAttendanceSummary } from './roster-attendance';
 
 export function fellowshipBirthdayDirectory(members: { id: string; name: string; phone?: string | null; birthday?: string | null }[], today: string) {
   return members.map(member => {
@@ -21,6 +22,7 @@ export interface FellowshipHistoryMember {
   history: { date: string; status: 'present' | 'absent' }[];
 }
 export interface FellowshipAttendanceReport {
+  attendanceSummary?: RosterAttendanceSummary;
   fellowship: string;
   today: string;
   members: FellowshipHistoryMember[];

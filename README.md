@@ -254,6 +254,13 @@ sort by calendar month/day, phone formats are normalized for comparison, and
 missing values stay last. **Reset to color order** restores the default.
 Color pills filter alongside search, fellowship, designation and archive status;
 click the selected color again or **All colors** to clear the color filter.
+The same service window and thresholds also appear in **Overview** (active-member
+color totals and member care/birthday cards), **Absenteeism**, and **Fellowship
+Attendance History**. Absenteeism and history rows show the same count badges,
+start in color order, and support color filtering. Report date/month filters
+change their historical metrics without changing the latest-eight-service color.
+Existing report permissions still apply; absenteeism-only staff can read active
+attendance colors without gaining roster editing or archived-member access.
 
 ## Account emails and fellowship birthday reminders
 

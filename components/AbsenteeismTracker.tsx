@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { indexAttendanceByMember } from '@/lib/attendance-identity';
+import { attendanceStyles } from '@/lib/attendance-presentation';
+import { matchesRosterColor, rosterMemberColor, type RosterColorFilter } from '@/lib/roster-view';
+import type { RosterAttendanceSummary } from '@/lib/roster-attendance';
+import { AttendanceColorGuide, MemberAttendanceBadge } from './MemberAttendanceColor';
 
 // Definitions
 interface Member {
@@ -22,6 +26,7 @@ interface AttendanceRecord {
 
 interface TrackerRow {
   member: Member;
+  recentAttendance: number | null;
   totalAbsences: number;
   monthlyAbsences: number;
   consecutiveAbsences: number;
@@ -42,22 +47,28 @@ export default function AbsenteeismTracker() {
   const [members, setMembers] = useState<Member[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [attendanceSummary,setAttendanceSummary] = useState<RosterAttendanceSummary|null>(null);
+  const [attendanceError,setAttendanceError] = useState('');
+  const [colorFilter,setColorFilter] = useState<RosterColorFilter>('all');
   
   // Filtering & Sorting
   const [selectedMonth, setSelectedMonth] = useState<string>(''); // YYYY-MM
-  const [sortField, setSortField] = useState<keyof TrackerRow>('totalAbsences');
+  const [sortField, setSortField] = useState<keyof TrackerRow>('recentAttendance');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [memRes, attRes] = await Promise.all([
+        const [memRes, attRes, summaryRes] = await Promise.all([
           fetch('/api/members'),
-          fetch('/api/attendance')
+          fetch('/api/attendance'),
+          fetch('/api/members/attendance-summary',{cache:'no-store'}).catch(()=>null),
         ]);
         if (memRes.ok) setMembers(await memRes.json());
         if (attRes.ok) setRecords(await attRes.json());
+        if (summaryRes?.ok) setAttendanceSummary(await summaryRes.json());
+        else setAttendanceError('Attendance colors could not be loaded. Reload this view to try again.');
       } catch (e) {
         console.error(e);
       } finally {
@@ -143,6 +154,7 @@ export default function AbsenteeismTracker() {
 
       data.push({
         member,
+        recentAttendance: attendanceSummary?.members[member.id]?.attended ?? null,
         totalAbsences,
         monthlyAbsences,
         consecutiveAbsences,
@@ -153,10 +165,11 @@ export default function AbsenteeismTracker() {
     });
 
     return data;
-  }, [members, records, serviceDates, selectedMonth]);
+  }, [members, records, serviceDates, selectedMonth, attendanceSummary]);
 
   const sortedData = useMemo(() => {
     const sorted = [...trackerData].filter(row => {
+      if (!matchesRosterColor(row.member,attendanceSummary,colorFilter)) return false;
       const q = searchQuery.toLowerCase();
       return row.member.name.toLowerCase().includes(q) || (row.member.fellowship || '').toLowerCase().includes(q);
     });
@@ -169,6 +182,11 @@ export default function AbsenteeismTracker() {
         valA = a.member.name;
         valB = b.member.name;
       }
+      if (sortField==='recentAttendance') {
+        if (valA===null && valB!==null) return 1;
+        if (valB===null && valA!==null) return -1;
+        return ((valA ?? 0)-(valB ?? 0))*(sortOrder==='asc'?1:-1)||a.member.name.localeCompare(b.member.name);
+      }
 
       if (valA === null) valA = 9999; // Put never-attended at top of descending
       if (valB === null) valB = 9999;
@@ -179,7 +197,7 @@ export default function AbsenteeismTracker() {
     });
 
     return sorted;
-  }, [trackerData, sortField, sortOrder, searchQuery]);
+  }, [trackerData, sortField, sortOrder, searchQuery, attendanceSummary, colorFilter]);
 
   const handleSort = (field: keyof TrackerRow) => {
     if (sortField === field) {
@@ -204,6 +222,8 @@ export default function AbsenteeismTracker() {
 
   return (
     <div className="space-y-6">
+      <AttendanceColorGuide summary={attendanceSummary} value={colorFilter} onChange={setColorFilter}/>
+      {attendanceError&&<p role="alert" className="text-sm text-red-800">{attendanceError}</p>}
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-red-50 border border-red-100 p-4 rounded-xl shadow-sm">
@@ -254,6 +274,7 @@ export default function AbsenteeismTracker() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('member')}>
                   Member {sortField === 'member' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
+                <th aria-sort={sortField==='recentAttendance'?sortOrder==='asc'?'ascending':'descending':'none'} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-600"><button type="button" onClick={()=>handleSort('recentAttendance')} className="rounded py-1 font-semibold focus-visible:ring-2 focus-visible:ring-blue-600">Attendance · last 8 {sortField==='recentAttendance'?(sortOrder==='asc'?'↑':'↓'):'↕'}</button></th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('totalAbsences')}>
                   Total Absences {sortField === 'totalAbsences' && (sortOrder === 'asc' ? '↑' : '↓')}
                 </th>
@@ -270,7 +291,7 @@ export default function AbsenteeismTracker() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedData.map((row) => (
-                <tr key={row.member.id} className="hover:bg-gray-50 transition">
+                <tr key={row.member.id} className={`${attendanceStyles[rosterMemberColor(row.member,attendanceSummary)].row} transition`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <div className="font-medium text-gray-900">{row.member.name}</div>
@@ -280,6 +301,7 @@ export default function AbsenteeismTracker() {
                     </div>
                     <div className="text-xs text-gray-500">{row.member.fellowship || 'No Fellowship'}</div>
                   </td>
+                  <td className="px-6 py-4"><MemberAttendanceBadge memberId={row.member.id} summary={attendanceSummary}/></td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-semibold">
                     {row.totalAbsences}
                   </td>
@@ -311,7 +333,7 @@ export default function AbsenteeismTracker() {
               ))}
               {sortedData.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No matching records found.
                   </td>
                 </tr>

@@ -2,6 +2,7 @@ import type { AttendanceRecord, Member } from './database';
 import { indexAttendanceByMember, normalizePhone } from './attendance-identity';
 import { dateInAccra, nextBirthday } from './birthdays';
 import type { DashboardRange } from './dashboard-period';
+import type { RosterAttendanceSummary } from './roster-attendance';
 
 export interface CarePerson {
   id?: string;
@@ -11,6 +12,8 @@ export interface CarePerson {
 }
 
 export interface PastoralDashboardData {
+  attendanceSummary?: RosterAttendanceSummary;
+  attendanceCounts?: {green:number;yellow:number;red:number};
   generatedAt: string;
   period?: DashboardRange & {
     attendance: number;

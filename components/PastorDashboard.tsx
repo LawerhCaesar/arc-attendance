@@ -13,6 +13,8 @@ import {
 import type { PastoralDashboardData } from '@/lib/pastoral-dashboard';
 import { dashboardRange, type DashboardPeriod } from '@/lib/dashboard-period';
 import PastoralWeekly from './PastoralWeekly';
+import { AttendanceColorGuide, MemberAttendanceBadge } from './MemberAttendanceColor';
+import { attendanceStyles } from '@/lib/attendance-presentation';
 
 type Destination = 'absenteeism' | 'demographics' | 'first-timers' | 'members';
 
@@ -135,6 +137,7 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
   }
 
   const { latestService, care, fellowships, dataQuality, period: selectedPeriod } = data;
+  const memberStyle = (id?:string) => attendanceStyles[data.attendanceSummary?.members[id || '']?.color || 'unavailable'];
   const urgentCount = care.absentMembers.length + care.recentFirstTimers.filter(person => !person.hasReturned).length;
   const qualityIssues = dataQuality.missingPhone + dataQuality.missingBirthday + dataQuality.unassignedFellowship;
   const change = latestService.changePercent;
@@ -213,6 +216,13 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
         ))}
       </section>
 
+      <div className="space-y-3">
+        <AttendanceColorGuide summary={data.attendanceSummary}/>
+        <section aria-label="Member attendance consistency totals" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {(['green','yellow','red'] as const).map(color=><div key={color} className={`rounded-xl border p-5 ${attendanceStyles[color].badge}`}><p className="text-sm font-semibold">{attendanceStyles[color].label}</p><p className="mt-1 text-3xl font-bold">{data.attendanceSummary?.serviceDates.length ? data.attendanceCounts?.[color] ?? '—' : '—'}</p><p className="mt-1 text-xs">{color==='green'?'4–8':color==='yellow'?'1–3':'0'} of the last 8 services · active brethren</p></div>)}
+        </section>
+      </div>
+
       <section className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 rounded-2xl border border-gray-100 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
@@ -232,9 +242,10 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
               {care.absentMembers.length === 0 ? <EmptyState>No repeated absences are currently flagged.</EmptyState> : (
                 <div className="space-y-2">
                   {care.absentMembers.slice(0, 5).map(person => (
-                    <div key={`${person.id || person.name}-${person.fellowship}`} className="flex items-center justify-between gap-3 rounded-xl bg-red-50/60 p-3">
+                    <div key={`${person.id || person.name}-${person.fellowship}`} className={`flex items-center justify-between gap-3 rounded-xl p-3 ${memberStyle(person.id).row}`}>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-gray-900">{person.name}</p>
+                        <div className="my-1"><MemberAttendanceBadge memberId={person.id} summary={data.attendanceSummary}/></div>
                         <p className="truncate text-xs text-gray-500">{person.fellowship} · {person.consecutiveAbsences} services missed</p>
                       </div>
                       {person.phone ? <a href={phoneHref(person.phone)} className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm">Call</a> : null}
@@ -282,13 +293,14 @@ export default function PastorDashboard({ onNavigate, initialData, allowedDestin
             {care.upcomingBirthdays.length === 0 ? <EmptyState>No birthdays in the next 14 days.</EmptyState> : (
               <div className="space-y-3">
                 {care.upcomingBirthdays.slice(0, 6).map(person => (
-                  <div key={`${person.id || person.name}-${person.birthday}`} className="flex items-center gap-3">
+                  <div key={`${person.id || person.name}-${person.birthday}`} className={`flex items-center gap-3 rounded-xl p-3 ${memberStyle(person.id).row}`}>
                     <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl bg-pink-50 text-pink-700">
                       <span className="text-[10px] font-semibold uppercase">{person.daysUntil === 0 ? 'Today' : 'In'}</span>
                       <span className="text-sm font-bold">{person.daysUntil === 0 ? '🎉' : `${person.daysUntil}d`}</span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-gray-900">{person.name}</p>
+                      <div className="my-1"><MemberAttendanceBadge memberId={person.id} summary={data.attendanceSummary}/></div>
                       <p className="truncate text-xs text-gray-500">{person.birthday} · {person.fellowship}</p>
                     </div>
                     {person.phone ? <a href={phoneHref(person.phone)} className="text-xs font-semibold text-pink-700">Call</a> : null}

@@ -6,6 +6,9 @@ import type { FellowshipAttendanceReport } from '@/lib/fellowship-insights';
 import useFellowshipData from './useFellowshipData';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import CallMemberButton from './CallMemberButton';
+import { AttendanceColorGuide, MemberAttendanceBadge } from './MemberAttendanceColor';
+import { attendanceStyles } from '@/lib/attendance-presentation';
+import { matchesRosterColor, rosterMemberColor, type RosterColorFilter } from '@/lib/roster-view';
 
 const dateLabel = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 function recentStart() { const date = new Date(`${dateInAccra()}T00:00:00Z`); date.setUTCDate(date.getUTCDate() - 90); return date.toISOString().slice(0, 10); }
@@ -16,13 +19,15 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
   const [end, setEnd] = useState(dateInAccra);
   const [memberId, setMemberId] = useState('all');
   const [search, setSearch] = useState('');
+  const [colorFilter,setColorFilter] = useState<RosterColorFilter>('all');
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const Chart = chartType === 'line' ? LineChart : BarChart;
   const invalidRange = Boolean(start && end && start > end);
   const visibleMembers = useMemo(() => (data?.members || []).filter(member =>
-    !member.archived && (memberId === 'all' || member.id === memberId) && member.name.toLowerCase().includes(search.trim().toLowerCase()))
-    .map(member => ({ ...member, history: member.history.filter(row => (!start || row.date >= start) && (!end || row.date <= end)) })),
-  [data, start, end, memberId, search]);
+    !member.archived && matchesRosterColor(member,data?.attendanceSummary||null,colorFilter) && (memberId === 'all' || member.id === memberId) && member.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .map(member => ({ ...member, history: member.history.filter(row => (!start || row.date >= start) && (!end || row.date <= end)) }))
+    .sort((a,b)=>(data?.attendanceSummary?.members[b.id]?.attended??-1)-(data?.attendanceSummary?.members[a.id]?.attended??-1)||a.name.localeCompare(b.name)),
+  [data, start, end, memberId, search, colorFilter]);
   const services = useMemo(() => {
     const dates = new Map<string, { date: string; present: number; absent: number }>();
     for (const member of visibleMembers) for (const row of member.history) {
@@ -36,6 +41,7 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
   return <div className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-2xl font-bold text-gray-950">Fellowship attendance history</h2><p className="mt-1 text-sm text-gray-600">{data?.fellowship ? `${data.fellowship} · ` : ''}Attendance by service and by brother or sister.</p></div><button onClick={reload} disabled={loading} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-blue-800 disabled:opacity-50">Refresh history</button></div>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error} <button onClick={reload} className="underline">Retry</button></p>}
+    <AttendanceColorGuide summary={data?.attendanceSummary} value={colorFilter} onChange={setColorFilter}/>
     <section aria-label="Attendance filters" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-end gap-3">
         {canChooseFellowship && <label className="text-sm font-medium text-gray-700">Fellowship<select value={fellowship} onChange={event => { setFellowship(event.target.value); setMemberId('all'); setSearch(''); }} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2">{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>}
@@ -76,16 +82,17 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
         <h3 className="px-5 pt-5 font-bold text-gray-950">Brethren attendance</h3><p className="px-5 pb-4 pt-1 text-sm text-gray-600">Expand a name to see their recorded service dates, or call using their saved number.</p>
         <div className="overflow-x-auto"><table className="min-w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-600"><tr>{['Name / service dates', 'Present', 'Absent', 'Last attended'].map(label => <th key={label} className="px-5 py-3 font-semibold">{label}</th>)}</tr></thead>
+          <thead className="bg-gray-50 text-gray-600"><tr>{['Name / service dates', 'Attendance · last 8', 'Present', 'Absent', 'Last attended'].map(label => <th key={label} className="px-5 py-3 font-semibold">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-gray-100">{visibleMembers.map(member => {
             const attended = member.history.filter(row => row.status === 'present');
-            return <tr key={member.id}>
+            return <tr key={member.id} className={attendanceStyles[rosterMemberColor(member,data.attendanceSummary||null)].row}>
               <td className="px-5 py-4 align-top"><div className="flex flex-wrap items-start justify-between gap-3">
                 <details className="min-w-0"><summary className="cursor-pointer font-semibold text-blue-900">{member.name}</summary>
                   {member.history.length ? <ul className="mt-3 space-y-2">{member.history.map(row => <li key={row.date} className="flex flex-wrap gap-3 text-gray-700"><time dateTime={row.date}>{dateLabel(row.date)}</time><span className={row.status === 'present' ? 'text-blue-800' : 'text-amber-800'}>{row.status === 'present' ? 'Present' : 'Absent'}</span></li>)}</ul> : <p className="mt-2 font-normal text-gray-600">No records in this period.</p>}
                 </details>
                 <CallMemberButton name={member.name} phone={member.phone} />
               </div></td>
+              <td className="px-5 py-4 align-top"><MemberAttendanceBadge memberId={member.id} summary={data.attendanceSummary}/></td>
               <td className="px-5 py-4 align-top">{attended.length}</td><td className="px-5 py-4 align-top">{member.history.length - attended.length}</td><td className="whitespace-nowrap px-5 py-4 align-top text-gray-600">{attended[0] ? dateLabel(attended[0].date) : 'Not recorded'}</td>
             </tr>;
           })}</tbody>
