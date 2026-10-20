@@ -4,11 +4,13 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { dateInAccra } from '@/lib/birthdays';
 import type { FellowshipAttendanceReport } from '@/lib/fellowship-insights';
 import useFellowshipData from './useFellowshipData';
+import { FELLOWSHIPS } from '@/lib/fellowships';
 
 const dateLabel = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 function recentStart() { const date = new Date(`${dateInAccra()}T00:00:00Z`); date.setUTCDate(date.getUTCDate() - 90); return date.toISOString().slice(0, 10); }
-export default function FellowshipAttendanceHistory() {
-  const { data, error, loading, reload } = useFellowshipData<FellowshipAttendanceReport>('/api/fellowship/attendance');
+export default function FellowshipAttendanceHistory({ canChooseFellowship = false }: { canChooseFellowship?: boolean }) {
+  const [fellowship, setFellowship] = useState(FELLOWSHIPS[0]);
+  const { data, error, loading, reload } = useFellowshipData<FellowshipAttendanceReport>(`/api/fellowship/attendance${canChooseFellowship ? `?fellowship=${encodeURIComponent(fellowship)}` : ''}`);
   const [start, setStart] = useState(recentStart);
   const [end, setEnd] = useState(dateInAccra);
   const [memberId, setMemberId] = useState('all');
@@ -30,10 +32,11 @@ export default function FellowshipAttendanceHistory() {
   const present = services.reduce((sum, service) => sum + service.present, 0);
   const absent = services.reduce((sum, service) => sum + service.absent, 0);
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-2xl font-bold text-gray-950">Attendance history</h2><p className="mt-1 text-sm text-gray-600">{data?.fellowship ? `${data.fellowship} · ` : ''}Fellowship attendance by service and by brother or sister.</p></div><button onClick={reload} disabled={loading} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-blue-800 disabled:opacity-50">Refresh history</button></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-2xl font-bold text-gray-950">Fellowship attendance history</h2><p className="mt-1 text-sm text-gray-600">{data?.fellowship ? `${data.fellowship} · ` : ''}Attendance by service and by brother or sister.</p></div><button onClick={reload} disabled={loading} className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-blue-800 disabled:opacity-50">Refresh history</button></div>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error} <button onClick={reload} className="underline">Retry</button></p>}
     <section aria-label="Attendance filters" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-end gap-3">
+        {canChooseFellowship && <label className="text-sm font-medium text-gray-700">Fellowship<select value={fellowship} onChange={event => { setFellowship(event.target.value); setMemberId('all'); setSearch(''); }} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2">{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>}
         <label className="text-sm font-medium text-gray-700">From<input type="date" value={start} max={end || data?.today} onChange={event => setStart(event.target.value)} className="mt-1 block rounded-lg border border-gray-300 px-3 py-2" /></label>
         <label className="text-sm font-medium text-gray-700">To<input type="date" value={end} min={start} max={data?.today} onChange={event => setEnd(event.target.value)} className="mt-1 block rounded-lg border border-gray-300 px-3 py-2" /></label>
         <button onClick={() => { setStart(''); setEnd(data?.today || dateInAccra()); }} className="rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800">All history</button>

@@ -3,6 +3,7 @@ import { matchFellowship } from './fellowships';
 import { fetchAllRows } from './pagination';
 import { consolidateLinkedAttendance, matchesRosterMember, normalizePhone } from './attendance-identity';
 import { getSupabaseAdmin } from './supabase-admin';
+import { returningArchivedMember } from './returning-member';
 
 export interface AttendanceRecord {
   id?: string;
@@ -100,7 +101,7 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
     for (let start = 0; start < existing.length; start += 100) {
       const { error: updateError } = await supabase.from(TABLE_NAME).update(updatePayload)
         .in('id', existing.slice(start, start + 100).map(row => row.id));
-      if (updateError) throw new Error(`Failed to update record: ${updateError.message}`);
+      if (updateError) throw updateError;
     }
   } else {
     // Insert new
@@ -110,7 +111,7 @@ export async function appendAttendance(record: AttendanceRecord): Promise<void> 
       .insert([{ ...insertPayload, createdAt }]);
 
     if (insertError) {
-      throw new Error(`Failed to insert record: ${insertError.message}`);
+      throw insertError;
     }
   }
 }
@@ -193,17 +194,20 @@ const normalizedPhone = normalizePhone;
 
 /** Find an active roster member using phone first, then name and fellowship. */
 export async function findRosterMember(
-  person: Pick<Member, 'name' | 'phone' | 'fellowship'>
+  person: Pick<Member, 'name' | 'phone' | 'fellowship'>,
+  fellowshipScope?: string,
 ): Promise<Member | null> {
   const phone = normalizedPhone(person.phone);
 
   if (person.phone?.trim()) {
-    const { data: exactPhone, error: phoneError } = await supabase
+    let phoneQuery = supabase
       .from(MEMBERS_TABLE)
       .select('*')
       .eq('is_active', true)
       .eq('phone', person.phone.trim())
       .limit(1);
+    if (fellowshipScope) phoneQuery = phoneQuery.eq('fellowship', fellowshipScope);
+    const { data: exactPhone, error: phoneError } = await phoneQuery;
     if (phoneError) throw new Error(`Failed to check member roster: ${phoneError.message}`);
     if (exactPhone?.[0]) return exactPhone[0] as Member;
   }
@@ -211,7 +215,7 @@ export async function findRosterMember(
   // Legacy phone values are not normalized, so compare the complete active roster
   // locally after the fast exact-phone lookup. This catches spaces, dashes and
   // country-code formatting differences before falling back to name/fellowship.
-  const candidates = await getMembers();
+  const candidates = await getMembers(undefined, fellowshipScope);
 
   const match = (candidates || []).find(candidate => {
     const candidatePhone = normalizedPhone(candidate.phone);
@@ -221,10 +225,23 @@ export async function findRosterMember(
   if (match) return match;
 
   // Old names/contacts remain valid aliases after an admin-approved merge.
-  const aliases = await fetchAllRows<Member>((from, to) => supabase.from(MEMBERS_TABLE)
-    .select('*').not('merged_into_id', 'is', null).order('id').range(from, to));
+  let aliasQuery = supabase.from(MEMBERS_TABLE).select('*').not('merged_into_id', 'is', null).order('id');
+  if (fellowshipScope) aliasQuery = aliasQuery.eq('fellowship', fellowshipScope);
+  const aliases = await fetchAllRows<Member>((from, to) => aliasQuery.range(from, to));
   const alias = aliases.find(candidate => matchesRosterMember(person, candidate));
   return candidates.find(candidate => candidate.id === alias?.merged_into_id) || null;
+}
+
+/** Include archived identities without exposing them in the public roster.
+ * The attendance trigger restores a matched identity only on a present write.
+ */
+export async function findAttendanceRosterMember(person: Pick<Member, 'name' | 'phone' | 'fellowship'>, fellowshipScope?: string): Promise<Member | null> {
+  let query = (getSupabaseAdmin() || supabase).from(MEMBERS_TABLE).select('*')
+    .eq('is_active', false).is('merged_into_id', null).order('id');
+  if (fellowshipScope || person.fellowship) query = query.eq('fellowship', fellowshipScope || matchFellowship(person.fellowship));
+  const archived = await fetchAllRows<Member>((from, to) => query.range(from, to));
+  const canonical = { ...person, fellowship: person.fellowship ? matchFellowship(person.fellowship) : '' };
+  return returningArchivedMember(canonical, archived) || findRosterMember(person, fellowshipScope);
 }
 
 export async function createMember(
@@ -273,7 +290,7 @@ export async function syncMemberFromAttendance(record: AttendanceRecord, memberI
     let query = client.from(MEMBERS_TABLE).update(updatePayload).eq('id', memberId).eq('is_active', true);
     if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
     const { error } = await query;
-    if (error) throw new Error(`Failed to sync roster member: ${error.message}`);
+    if (error) throw error;
     return;
   }
 
@@ -310,7 +327,7 @@ export async function syncMemberFromAttendance(record: AttendanceRecord, memberI
         .eq('id', existing.id).eq('is_active', true);
       if (fellowshipScope) query = query.eq('fellowship', fellowshipScope);
       const { error } = await query;
-      if (error) throw new Error(`Failed to sync roster member: ${error.message}`);
+      if (error) throw error;
     }
   }
 }

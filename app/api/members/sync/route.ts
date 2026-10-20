@@ -6,6 +6,7 @@ import { parseMemberInput } from '@/lib/member-scope';
 import { memberApiFailure } from '@/lib/member-api';
 
 export async function POST(request: NextRequest) {
+  let candidates: { name: string; phone: string }[] = [];
   try {
     const context = await getAuthContext();
     if (!context || !canAccess(context, 'members', 'entry', 'past-entry')) {
@@ -21,8 +22,9 @@ export async function POST(request: NextRequest) {
 
     // Validate the complete import before making any writes.
     const prepared = members.map(member => parseMemberInput({ ...member, designation: member?.designation || 'Member' }, context));
+    candidates = prepared;
     await createMembers(prepared);
 
     return NextResponse.json({ message: 'Members imported successfully' }, { status: 200 });
-  } catch (error) { return memberApiFailure(error); }
+  } catch (error) { return memberApiFailure(error, { phones: candidates.map(member => member.phone), candidates }); }
 }

@@ -19,10 +19,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  let phone = '';
   try {
     const context = await requireMemberAccess();
-    const member = await createMember(parseMemberInput(await request.json(), context));
+    const input = parseMemberInput(await request.json(), context);
+    phone = input.phone;
+    const member = await createMember(input);
 
     return NextResponse.json(member, { status: 201 });
-  } catch (error) { return memberApiFailure(error); }
+  } catch (error) { return memberApiFailure(error, { phones: [phone] }); }
 }

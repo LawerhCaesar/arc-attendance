@@ -16,13 +16,18 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  let phone = '';
+  let memberId = '';
   try {
     const context = await requireMemberAccess();
     const { id } = await params;
-    const member = await updateMember(id, parseMemberInput(await request.json(), context), memberFellowshipScope(context));
+    memberId = id;
+    const input = parseMemberInput(await request.json(), context);
+    phone = input.phone;
+    const member = await updateMember(id, input, memberFellowshipScope(context));
     if (!member) return NextResponse.json({ error: 'Member not found in your roster.' }, { status: 404 });
     return NextResponse.json(member);
-  } catch (error) { return memberApiFailure(error); }
+  } catch (error) { return memberApiFailure(error, { phones: [phone], excludeId: memberId }); }
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

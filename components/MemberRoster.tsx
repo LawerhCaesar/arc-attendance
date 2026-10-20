@@ -175,7 +175,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   };
 
   const handleArchive = async (id: string, restore = false) => {
-    if (!restore && !confirm('Archive this member? Their details and attendance history will be kept. Cell and BSCT assignments will be cleared. You can restore them later.')) return;
+    if (!restore && !confirm('Archive this member? Their details and attendance history will be kept. Cell and BSCT assignments will be cleared. They will return to the active roster when recorded present again, or you can restore them manually.')) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/members/${id}/archive`, {
@@ -296,7 +296,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
           <button type="button" aria-pressed={!showArchived} onClick={() => { if (!showArchived) return; setMembers([]); setShowArchived(false); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${!showArchived ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>Active brethren</button>
           <button type="button" aria-pressed={showArchived} onClick={() => { if (showArchived) return; setMembers([]); setShowArchived(true); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${showArchived ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>Archived brethren</button>
         </div>
-        {showArchived && <p className="text-sm text-gray-600">Archived details and attendance are kept. Restore a member to return them to the active roster.</p>}
+        {showArchived && <p className="text-sm text-gray-600">Details and attendance are kept. Brethren return automatically when recorded present, or you can restore them here.</p>}
       </div>
       {loadError && <DismissibleBanner role="alert" onDismiss={() => setLoadError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{loadError} <button type="button" onClick={fetchMembers} className="ml-2 underline">Retry</button></DismissibleBanner>}
       {/* Success banner */}

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { appendAttendance, findRosterMember, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
+import { appendAttendance, findAttendanceRosterMember, getAttendanceData, syncMemberFromAttendance } from '@/lib/database';
 import { getAuthContext } from '@/lib/auth';
 import { canAccess, ATTENDANCE_READ_PERMISSIONS } from '@/lib/permissions';
 import { recordFirstTimerJourney } from '@/lib/visitor-journeys';
+import { memberApiFailure } from '@/lib/member-api';
+import { memberFellowshipScope } from '@/lib/member-scope';
+import { dateInAccra } from '@/lib/birthdays';
 
 /**
  * Snaps a YYYY-MM-DD date string to the most recent Sunday (local time).
@@ -21,6 +24,8 @@ function snapToSunday(isoDate: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  let conflictPhone = '';
+  let conflictMemberId = '';
   try {
     const context = await getAuthContext();
     const canCorrectAttendance = canAccess(context, 'entry', 'past-entry');
@@ -38,9 +43,10 @@ export async function POST(request: NextRequest) {
       attendanceStatus,
       explicitToggle,
     } = body;
+    if (attendanceStatus && !['present', 'absent'].includes(attendanceStatus)) return NextResponse.json({ error: 'Choose present or absent.' }, { status: 400 });
 
     // Name is required; fellowship/phone/birthday/location are optional
-    if (!name) {
+    if (typeof name !== 'string' || !name.trim()) {
       return NextResponse.json(
         { error: 'Name is required' },
         { status: 400 }
@@ -62,11 +68,15 @@ export async function POST(request: NextRequest) {
     const rawDate = attendanceDate || new Date().toISOString().split('T')[0];
     const serviceSunday = snapToSunday(rawDate);
 
-    const rosterMember = await findRosterMember({
+    const scope = memberFellowshipScope(context);
+    if (scope && fellowship && fellowship !== scope) return NextResponse.json({ error: 'Outside your fellowship scope' }, { status: 403 });
+    const rosterMember = await findAttendanceRosterMember({
       name: name.trim(),
       phone: (phone || '').trim(),
-      fellowship: (fellowship || '').trim(),
-    });
+      fellowship: scope || (fellowship || '').trim(),
+    }, scope);
+    conflictPhone = rosterMember?.phone || (phone || '').trim();
+    conflictMemberId = rosterMember?.id || '';
     const automaticallyFirstTimer = !rosterMember;
     const preservedFirstTimer = firstTimer === true || firstTimer === 'true' || firstTimer === 'yes';
     const effectiveFellowship = rosterMember?.fellowship || (fellowship || '').trim();
@@ -98,7 +108,7 @@ export async function POST(request: NextRequest) {
     if (rosterMember) {
       // Public check-in must not demote a cell/BSCT leader because its form
       // omitted a designation or defaulted it to Member.
-      await syncMemberFromAttendance({ ...record, designation: canCorrectAttendance ? record.designation : undefined }, rosterMember.id);
+      await syncMemberFromAttendance({ ...record, designation: canCorrectAttendance ? record.designation : undefined }, rosterMember.id, scope);
     } else if (record.firstTimer === 'Yes') {
       await recordFirstTimerJourney(record);
     }
@@ -107,10 +117,12 @@ export async function POST(request: NextRequest) {
       {
         message: 'Attendance recorded successfully',
         firstTimer: record.firstTimer === 'Yes',
+        memberRestored: rosterMember?.is_active === false && record.attendanceStatus !== 'absent' && serviceSunday <= dateInAccra(),
       },
       { status: 201 }
     );
   } catch (error: any) {
+    if (error?.code === '23505' || error?.status) return memberApiFailure(error, { phones: [conflictPhone], excludeId: conflictMemberId });
     console.error('Error recording attendance:', error);
     return NextResponse.json(
       { error: 'Failed to record attendance. Please try again.' },

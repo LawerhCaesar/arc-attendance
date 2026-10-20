@@ -34,15 +34,17 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'welfare',              label: 'Welfare / Birthdays', icon: '🎂' },
   { id: 'users',                label: 'Users & Roles',     icon: '🔐' },
   { id: 'fellowship-birthdays',  label: 'Birthdays',         icon: '🎂' },
-  { id: 'fellowship-attendance', label: 'Attendance History', icon: '📈' },
+  { id: 'fellowship-attendance', label: 'Fellowship Attendance History', icon: '📈' },
 ];
 
 // These scoped views belong to the fellowship roster permission. They do not
 // grant access to church-wide birthday or raw attendance endpoints.
 function visibleTabs(role: string, permissions: string[]) {
-  return tabs.filter(tab => tab.id === 'fellowship-birthdays' || tab.id === 'fellowship-attendance'
-    ? role === 'fellowship_leader' && permissions.includes('members')
-    : permissions.includes(tab.id));
+  return tabs.filter(tab => {
+    if (tab.id === 'fellowship-birthdays') return role === 'fellowship_leader' && permissions.includes('members');
+    if (tab.id === 'fellowship-attendance') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('fellowship-services');
+    return permissions.includes(tab.id);
+  });
 }
 
 export default function AdminDashboard() {
@@ -109,7 +111,7 @@ export default function AdminDashboard() {
         )}
         {activeTab === 'care' && <PastoralWeekly assignedOnly />}
         {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-birthdays' && <FellowshipBirthdays key={fellowshipScope} />}
-        {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-attendance' && <FellowshipAttendanceHistory key={fellowshipScope} />}
+        {activeTab === 'fellowship-attendance' && <FellowshipAttendanceHistory key={fellowshipScope} canChooseFellowship={sessionRole !== 'fellowship_leader'} />}
 
         { activeTab === 'past-entry' && (
           <div>

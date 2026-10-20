@@ -254,21 +254,34 @@ independently of email delivery configuration.
 
 The fellowship leader sidebar includes **Birthdays** (the full active fellowship
 list, with name search, month filters and missing birthday details) and
-**Attendance History** (service graph, exact counts and expandable individual
+**Fellowship Attendance History** (service graph, exact counts and expandable individual
 service dates). Attendance can be filtered by dates or member, with archived
 brethren included by default. Only explicitly recorded absences count as absent;
 overlaps count once per person/service, with present evidence taking precedence.
 Legacy attendance is linked only when a member can be identified unambiguously.
-These views use the existing Member Roster permission and never grant access to
-church-wide attendance or birthdays.
+Leaders use their existing Member Roster permission and remain restricted to
+their assigned fellowship. Staff with **By Fellowship** reporting access also see
+**Fellowship Attendance History**, with a fellowship selector.
 
 **Member Roster → Archive** retains the member and attendance records while
 removing them from active check-in, birthday lists and cell/BSCT assignments.
 **Archived brethren → Restore** returns them to the active roster; cell and BSCT
 assignments must be made again. Previously removed (soft-deleted) records appear
 in this archive, while records retired by approved duplicate merges do not.
-Restore rejects a phone number already held by another active member. No new
-database migration is needed for these views or archiving.
+Restore rejects a phone number already held by another active member. Duplicate
+phone messages name the existing member when that record is within the staff
+account's permitted roster; names outside a leader's fellowship remain private.
+
+Apply `supabase/migrations/20261020015946_restore_archived_members_on_present_attendance.sql`
+for automatic restoration. Recording an archived member **present** (including a
+correction from absent to present) returns the same identity to the active roster
+and keeps their history. Absent entries, future services and merged-away members
+do not reactivate them. Cell and BSCT assignments still need to be made again.
+The attendance write and restoration commit together, and a conflicting active
+phone number rolls both back. Public check-in recognizes a returning archived
+member by their full name and fellowship with no conflicting known phone, rather
+than treating them as a first-time visitor. Existing historical attendance is not
+backfilled by this migration.
 
 Staff can sign in with their saved email or username and the same password.
 Emails are normalized and unique across managed and configured accounts.

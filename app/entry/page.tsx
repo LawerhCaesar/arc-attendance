@@ -7,6 +7,17 @@ import { dateInAccra } from '@/lib/birthdays';
 import { entryMetrics, reconcileEntryRoster } from '@/lib/entry-roster';
 import DismissibleBanner from '@/components/DismissibleBanner';
 
+async function attendanceFailureDetails(results: PromiseSettledResult<Response>[], names: string[]) {
+  const details = await Promise.all(results.map(async (result, index) => {
+    if (result.status === 'rejected') return `${names[index]}: Network error.`;
+    if (result.value.ok) return '';
+    const body = await result.value.json().catch(() => ({}));
+    return `${names[index]}: ${body.error || 'Unable to save attendance.'}`;
+  }));
+  const failed = details.filter(Boolean);
+  return `${failed.slice(0, 5).join(' ')}${failed.length > 5 ? ` ${failed.length - 5} more entries need review.` : ''}`;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AttendanceEntry {
@@ -553,11 +564,12 @@ export default function EntryPage() {
         return result.status === 'fulfilled' && result.value.ok;
       }).map(entry => entry.id));
       const failed = marked.length - successful.size;
+      const failureDetails = failed ? await attendanceFailureDetails(responses, marked.map(entry => entry.name)) : '';
       setMarkedPresent(previous => new Set(Array.from(previous).filter(id => !successful.has(id))));
       // Keep successful rows visible and distinguish saved attendance from picks.
       setEntries(previous => previous.map(entry => successful.has(entry.id) ? { ...entry, savedForService: serviceDate } : entry));
       setMessage(failed
-        ? { type: 'error', text: `${successful.size} saved; ${failed} failed and remain selected for retry.` }
+        ? { type: 'error', text: `${successful.size} saved; ${failed} failed and remain selected for retry. ${failureDetails}` }
         : { type: 'success', text: `${successful.size} selection(s) saved. These rows now show Present · Saved.` });
       await Promise.all([fetchSubmittedEntries(), fetchServiceSummary()]);
     } catch {
@@ -713,7 +725,8 @@ export default function EntryPage() {
       const absentCount = toSubmit.length - presentCount;
 
       if (failed > 0) {
-        setClMessage({ type: 'error', text: `${failed} record(s) failed to submit. Please try again.` });
+        const details = await attendanceFailureDetails(responses, toSubmit.map(member => member.name));
+        setClMessage({ type: 'error', text: `${failed} record(s) failed to submit. ${details}` });
       } else {
         setClMessage({
           type: 'success',
@@ -757,7 +770,8 @@ export default function EntryPage() {
         setLastSundayEditingId(null);
         setLastSundayMessage({ type: 'success', text: `Updated ${merged.name} successfully.` });
       } else {
-        setLastSundayMessage({ type: 'error', text: 'Failed to save changes.' });
+        const body = await res.json().catch(() => ({}));
+        setLastSundayMessage({ type: 'error', text: body.error || 'Failed to save changes.' });
       }
     } catch { setLastSundayMessage({ type: 'error', text: 'Network error. Please try again.' }); }
     finally { setIsSavingLastSunday(false); }
@@ -780,7 +794,8 @@ export default function EntryPage() {
       if (res.ok) {
         setLastSundayRecords(prev => prev.map(r => r.id === record.id ? { ...r, attendanceStatus: newStatus } : r));
       } else {
-        setLastSundayMessage({ type: 'error', text: 'Failed to toggle status.' });
+        const body = await res.json().catch(() => ({}));
+        setLastSundayMessage({ type: 'error', text: body.error || 'Failed to toggle status.' });
       }
     } catch { setLastSundayMessage({ type: 'error', text: 'Network error.' }); }
   };
