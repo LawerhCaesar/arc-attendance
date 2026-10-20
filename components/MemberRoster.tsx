@@ -7,6 +7,7 @@ import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 import MemberEditSignIn from '@/components/MemberEditSignIn';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 import { dateInAccra } from '@/lib/birthdays';
+import type { RosterAttendanceColor, RosterAttendanceSummary } from '@/lib/roster-attendance';
 
 interface Member {
   id: string;
@@ -22,6 +23,13 @@ interface Member {
 }
 
 const DESIGNATIONS = ['Fellowship Leader', 'Member'] as const;
+const attendanceStyles: Record<RosterAttendanceColor, {row:string;badge:string;label:string}> = {
+  green:{row:'bg-green-50 hover:bg-green-100',badge:'border-green-300 bg-green-100 text-green-900',label:'Regular'},
+  yellow:{row:'bg-yellow-50 hover:bg-yellow-100',badge:'border-yellow-300 bg-yellow-100 text-yellow-900',label:'Inconsistent'},
+  red:{row:'bg-red-50 hover:bg-red-100',badge:'border-red-300 bg-red-100 text-red-900',label:'No attendance'},
+  unavailable:{row:'hover:bg-gray-50',badge:'border-gray-200 bg-gray-100 text-gray-700',label:'Unavailable'},
+  archived:{row:'bg-gray-50 hover:bg-gray-100',badge:'border-gray-300 bg-gray-200 text-gray-700',label:'Excluded'},
+};
 
 const designationColors: Record<string, string> = {
   'Fellowship Leader': 'bg-purple-100 text-purple-700',
@@ -36,6 +44,9 @@ const emptyForm = (): Omit<Member, 'id'> => ({
 
 export default function MemberRoster({ canReviewDuplicates = false, fellowshipScope, onRosterChanged }: { canReviewDuplicates?: boolean; fellowshipScope?: string; onRosterChanged?: () => void }) {
   const [members, setMembers] = useState<Member[]>([]);
+  const [attendance,setAttendance] = useState<RosterAttendanceSummary | null>(null);
+  const [attendanceLoading,setAttendanceLoading] = useState(false);
+  const [attendanceError,setAttendanceError] = useState('');
   const [rosterStatus, setRosterStatus] = useState<'all' | 'active' | 'archived'>('all');
   const showArchived = rosterStatus === 'archived';
   const [loadError, setLoadError] = useState('');
@@ -58,6 +69,21 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const [duplicateReviewVersion, setDuplicateReviewVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const memberRequestVersion = useRef(0);
+  const attendanceRequestVersion = useRef(0);
+
+  const fetchAttendanceSummary = useCallback(async () => {
+    const version = ++attendanceRequestVersion.current;
+    setAttendanceLoading(true);setAttendanceError('');setAttendance(null);
+    try {
+      const response = await fetch('/api/members/attendance-summary',{cache:'no-store'});
+      const result = await response.json();
+      if (version !== attendanceRequestVersion.current) return;
+      if (!response.ok) throw new Error(result.error || 'Unable to load attendance colors.');
+      setAttendance(result);
+    } catch (error) {
+      if (version === attendanceRequestVersion.current) setAttendanceError(error instanceof Error ? error.message : 'Unable to load attendance colors.');
+    } finally {if (version === attendanceRequestVersion.current) setAttendanceLoading(false);}
+  },[]);
 
   const fetchMembers = useCallback(async () => {
     const requestVersion = ++memberRequestVersion.current;
@@ -69,9 +95,10 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       if (requestVersion !== memberRequestVersion.current) return;
       if (!res.ok) throw new Error(result.error || 'Unable to load your roster.');
       setMembers(result);
+      void fetchAttendanceSummary();
     } catch (caught) { if (requestVersion === memberRequestVersion.current) setLoadError(caught instanceof Error ? caught.message : 'Unable to load your roster.'); }
     if (requestVersion === memberRequestVersion.current) setIsLoading(false);
-  }, []);
+  }, [fetchAttendanceSummary]);
 
   useEffect(() => { setMembers([]); fetchMembers(); }, [fetchMembers, fellowshipScope]);
 
@@ -184,6 +211,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       setIsLoading(false);
       setLoadError('');
       setMembers(current => current.map(member => member.id === id ? result.member : member));
+      void fetchAttendanceSummary();
       setSuccessMsg(restore ? 'Member unarchived and returned to the active roster.' : 'Member archived. They remain in the roster and are excluded from attendance records and calculations.');
       onRosterChanged?.();
       setDuplicateReviewVersion(value => value + 1);
@@ -294,6 +322,12 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
         </div>
         <p className="text-sm text-gray-600">Archived brethren stay here but do not count in attendance records or calculations. Use Unarchive, or record them present again, to return them.</p>
       </div>
+      <section aria-label="Roster attendance colors" className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-gray-950">Attendance · last 8 services</h3><button type="button" onClick={fetchMembers} disabled={isLoading || attendanceLoading} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-50">Refresh attendance</button></div>
+        <div className="flex flex-wrap gap-2 text-xs font-semibold"><span className="rounded-full border border-green-300 bg-green-100 px-3 py-1 text-green-900">Green · 4–8 services</span><span className="rounded-full border border-yellow-300 bg-yellow-100 px-3 py-1 text-yellow-900">Yellow · 1–3 services</span><span className="rounded-full border border-red-300 bg-red-100 px-3 py-1 text-red-900">Red · 0 services</span><span className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-gray-700">Gray · archived / unavailable</span></div>
+        <p className="text-xs text-gray-600">Recorded present attendance, counted once per church service date. {attendanceLoading ? 'Loading attendance…' : attendance?.serviceDates.length ? `${attendance.serviceDates.length} recorded service${attendance.serviceDates.length===1?'':'s'} in this window: ${attendance.serviceDates[attendance.serviceDates.length-1]} to ${attendance.serviceDates[0]}.${attendance.serviceDates.length<8?' Fewer than eight services are available.':''}` : attendance ? 'No recorded services yet.' : 'Attendance colors are unavailable.'}</p>
+        {attendanceError && <p role="alert" className="text-sm text-red-800">{attendanceError} <button type="button" onClick={fetchAttendanceSummary} className="font-semibold underline">Retry attendance</button></p>}
+      </section>
       {loadError && <DismissibleBanner role="alert" onDismiss={() => setLoadError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{loadError} <button type="button" onClick={fetchMembers} className="ml-2 underline">Retry</button></DismissibleBanner>}
       {/* Success banner */}
       {successMsg && (
@@ -471,7 +505,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
             <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Name', 'Phone', 'Fellowship', 'Designation', 'Birthday', 'Location', 'Actions'].map(h => (
+                  {['Name', 'Attendance', 'Phone', 'Fellowship', 'Designation', 'Birthday', 'Location', 'Actions'].map(h => (
                     <th key={h} className={`px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide ${h === 'Actions' ? 'sticky right-0 z-20 bg-gray-50' : ''}`}>
                       {h}
                     </th>
@@ -479,8 +513,10 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(member => (
-                  <Fragment key={member.id}><tr className="hover:bg-gray-50 transition-colors">
+                {filtered.map(member => {
+                  const status = member.is_active === false ? {attended:null,color:'archived' as const} : attendance?.members[member.id];
+                  const style = attendanceStyles[status?.color || 'unavailable'];
+                  return <Fragment key={member.id}><tr className={`${style.row} transition-colors`}>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
@@ -489,6 +525,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                         <span className="font-medium text-sm text-gray-900">{member.name}{member.is_active === false && <span className="ml-2 inline-block rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700">Archived</span>}</span>
                       </div>
                     </td>
+                    <td className="px-5 py-3 text-sm"><span className={`inline-block whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${style.badge}`}>{status?.attended != null ? `${status.attended}/${attendance?.serviceDates.length} · ${style.label}` : member.is_active === false ? 'Archived · excluded' : attendanceLoading ? 'Loading…' : attendance && !attendance.serviceDates.length ? 'No services yet' : 'Unavailable'}</span></td>
                     <td className="px-5 py-3 text-sm text-gray-500">{member.phone || '—'}</td>
                     <td className="px-5 py-3 text-sm text-gray-600">{member.fellowship || '—'}</td>
                     <td className="px-5 py-3">
@@ -516,8 +553,8 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                         </button>
                       </div>
                     </td>
-                  </tr>{archiveError?.id === member.id && <tr><td colSpan={7} className="bg-red-50 px-5 py-3"><p role="alert" className="text-sm font-medium text-red-800">{archiveError.message}</p></td></tr>}</Fragment>
-                ))}
+                  </tr>{archiveError?.id === member.id && <tr><td colSpan={8} className="bg-red-50 px-5 py-3"><p role="alert" className="text-sm font-medium text-red-800">{archiveError.message}</p></td></tr>}</Fragment>;
+                })}
               </tbody>
             </table>
           </div>

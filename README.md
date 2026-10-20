@@ -236,6 +236,18 @@ and `PGDATABASE` settings to verify simultaneous saves.
 `tests/member-phone-legacy-merges.mjs` verifies reviewed partial merges and
 continued blocking of ordinary duplicate saves in separate transactions.
 
+## Member roster attendance colors
+
+The admin and fellowship **Member Roster** colors show recorded attendance in the
+same last eight church service dates: **green** for 4–8 services, **yellow** for
+1–3, and **red** for zero. A row badge also shows the count and text label.
+Repeated attendance entries count once per member/service; future dates and
+invalid records are excluded. Archived members stay gray and excluded. If fewer
+than eight services exist, the displayed denominator is the available count;
+no service data or a failed attendance load stays neutral. **Refresh attendance**
+reloads the roster and colors. The authenticated summary endpoint scopes member
+details to the leader's fellowship; only service dates are shared across scopes.
+
 ## Account emails and fellowship birthday reminders
 
 Apply the account email migration and
