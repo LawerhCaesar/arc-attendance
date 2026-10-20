@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { UpcomingBirthday } from '@/lib/birthdays';
+import CallMemberButton from './CallMemberButton';
 
-interface BirthdayList { fellowship: string; today: string; windowDays: number; birthdays: UpcomingBirthday[] }
+interface BirthdayList { fellowship: string; today: string; windowDays: number; birthdays: (UpcomingBirthday & { phone: string })[] }
 
 export default function UpcomingFellowshipBirthdays() {
   const [data, setData] = useState<BirthdayList | null>(null);
@@ -37,7 +38,7 @@ export default function UpcomingFellowshipBirthdays() {
       : !data?.birthdays.length ? <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-gray-600">No birthdays coming up in your fellowship in the next {data?.windowDays || 60} days.</p>
       : <ul className="mt-4 divide-y divide-gray-100">{data.birthdays.map(person => <li key={person.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
         <div className="min-w-0"><p className="break-words font-semibold text-gray-950">{person.name}</p><time dateTime={person.nextBirthday} className="mt-1 block text-sm text-gray-600">{person.birthdayLabel}</time></div>
-        <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${person.daysUntil === 0 ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-700'}`}>{person.daysUntil === 0 ? 'Today' : person.daysUntil === 1 ? 'Tomorrow' : `In ${person.daysUntil} days`}</span>
+        <div className="flex flex-wrap items-center gap-3"><span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${person.daysUntil === 0 ? 'bg-blue-100 text-blue-900' : 'bg-slate-100 text-slate-700'}`}>{person.daysUntil === 0 ? 'Today' : person.daysUntil === 1 ? 'Tomorrow' : `In ${person.daysUntil} days`}</span><CallMemberButton name={person.name} phone={person.phone} /></div>
       </li>)}</ul>}
   </section>;
 }

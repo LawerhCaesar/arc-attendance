@@ -3,10 +3,10 @@ import { nextBirthday } from './birthdays';
 import { normalizeDuplicatePhone } from './member-duplicates';
 import { excludeArchivedAttendance } from './archived-attendance';
 
-export function fellowshipBirthdayDirectory(members: { id: string; name: string; birthday?: string | null }[], today: string) {
+export function fellowshipBirthdayDirectory(members: { id: string; name: string; phone?: string | null; birthday?: string | null }[], today: string) {
   return members.map(member => {
     const birthday = nextBirthday(member.birthday || '', today);
-    return { id: member.id, name: member.name, month: birthday?.month ?? null,
+    return { id: member.id, name: member.name, phone: member.phone || '', month: birthday?.month ?? null,
       birthdayLabel: birthday?.display ?? null, daysUntil: birthday?.daysUntil ?? null,
       nextBirthday: birthday?.nextDate ?? null };
   }).sort((a, b) => (a.daysUntil ?? Infinity) - (b.daysUntil ?? Infinity) || a.name.localeCompare(b.name));
@@ -16,6 +16,7 @@ export type FellowshipBirthday = ReturnType<typeof fellowshipBirthdayDirectory>[
 export interface FellowshipHistoryMember {
   id: string;
   name: string;
+  phone: string;
   archived: boolean;
   history: { date: string; status: 'present' | 'absent' }[];
 }
@@ -71,7 +72,7 @@ export function fellowshipAttendanceReport(members: HistoryMemberInput[], rows: 
     histories.set(member.id!, history);
   }
   return { fellowship, today, unlinkedRecords, members: roster.map(member => ({
-    id: member.id!, name: member.name, archived: member.is_active === false,
+    id: member.id!, name: member.name, phone: member.phone || '', archived: member.is_active === false,
     history: [...(histories.get(member.id!) || [])].map(([date, status]) => ({ date, status })).sort((a, b) => b.date.localeCompare(a.date)),
   })).sort((a, b) => a.name.localeCompare(b.name)) };
 }

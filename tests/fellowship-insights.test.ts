@@ -8,12 +8,14 @@ const report = (members: HistoryMemberInput[], rows: HistoryAttendanceInput[]) =
 
 test('birthday directory covers the full year, sorts next birthdays, and retains missing/invalid details', () => {
   const directory = fellowshipBirthdayDirectory([
-    { id: 'a', name: 'Ama', birthday: '20-10' }, { id: 'b', name: 'Kojo', birthday: '01-01' },
+    { id: 'a', name: 'Ama', birthday: '20-10', phone: '0201234567' }, { id: 'b', name: 'Kojo', birthday: '01-01' },
     { id: 'c', name: 'Esi', birthday: '19-10' }, { id: 'd', name: 'Missing', birthday: '' },
     { id: 'e', name: 'Invalid', birthday: '31-02' },
   ], '2026-10-20');
   assert.deepEqual(directory.map(person => person.id), ['a', 'b', 'c', 'e', 'd']);
   assert.equal(directory[0].daysUntil, 0);
+  assert.equal(directory[0].phone, '0201234567');
+  assert.equal(directory[1].phone, '');
   assert.equal(directory[1].month, 1);
   assert.equal(directory[2].nextBirthday, '2027-10-19');
   assert.equal(directory[4].birthdayLabel, null);
@@ -25,6 +27,12 @@ test('service date wins over submission date; overlaps count once and present wi
     row({ phone: '', name: 'Boateng Ama' }), row({ attendanceDate: '2026-10-11', attendanceStatus: 'absent' })]);
   assert.deepEqual(result.members[0].history, [{ date: '2026-10-18', status: 'present' }, { date: '2026-10-11', status: 'absent' }]);
   assert.equal(result.unlinkedRecords, 0);
+});
+
+test('call details use the current roster number rather than a historical check-in number', () => {
+  const result = report([member({ phone: '+233 27 765 4321' })], [row({ member_id: 'a', phone: '0201234567' })]);
+  assert.equal(result.members[0].phone, '+233 27 765 4321');
+  assert.equal(result.members[0].history.length, 1);
 });
 
 test('archived brethren are excluded from reports and zero-history members never receive inferred absences', () => {

@@ -16,12 +16,14 @@ export async function GET() {
     const fellowship = memberFellowshipScope(context)!;
     const admin = getSupabaseAdmin();
     if (!admin) throw new Error('Birthday service unavailable.');
-    const members = await fetchAllRows<{ id: string; name: string; birthday: string | null }>((from, to) => admin
-      .from('members').select('id,name,birthday').eq('is_active', true).eq('fellowship', fellowship)
+    const members = await fetchAllRows<{ id: string; name: string; phone: string | null; birthday: string | null }>((from, to) => admin
+      .from('members').select('id,name,phone,birthday').eq('is_active', true).eq('fellowship', fellowship)
       .order('id').range(from, to));
     const today = dateInAccra();
     const windowDays = 60;
-    return NextResponse.json({ fellowship, today, windowDays, birthdays: upcomingBirthdays(members, today, windowDays) },
+    const phones = new Map(members.map(member => [member.id, member.phone || '']));
+    const birthdays = upcomingBirthdays(members, today, windowDays).map(person => ({ ...person, phone: phones.get(person.id) || '' }));
+    return NextResponse.json({ fellowship, today, windowDays, birthdays },
       { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     if (error instanceof MemberInputError) return NextResponse.json({ error: error.message }, { status: error.status });

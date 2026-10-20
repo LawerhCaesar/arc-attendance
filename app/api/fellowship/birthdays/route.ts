@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const { admin, fellowship } = await requireFellowshipLeader();
-    const members = await fetchAllRows<{ id: string; name: string; birthday: string | null }>((from, to) => admin.from('members')
-      .select('id,name,birthday').eq('fellowship', fellowship).eq('is_active', true).order('id').range(from, to));
+    const members = await fetchAllRows<{ id: string; name: string; phone: string | null; birthday: string | null }>((from, to) => admin.from('members')
+      .select('id,name,phone,birthday').eq('fellowship', fellowship).eq('is_active', true).order('id').range(from, to));
     const today = dateInAccra();
     return NextResponse.json({ fellowship, today, members: fellowshipBirthdayDirectory(members, today) },
       { headers: { 'Cache-Control': 'private, no-store' } });
