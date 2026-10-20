@@ -338,6 +338,17 @@ message per birthday/timing. Persisted claims prevent concurrent duplicate sends
 provider acceptance is recorded separately from handset delivery. Ambiguous
 network outcomes are retained as `uncertain` for review rather than resent.
 
+The same daily job sends a birthday greeting directly to each active, unmerged
+member's valid roster phone number **on their birthday at 08:00 Africa/Accra**,
+always from **CEYC ARC**. Archived members, missing/invalid phone numbers and
+invalid birthdays are excluded. Greetings do not depend on staff phone numbers
+or staff reminder preferences. Normalized shared phone numbers receive one
+greeting per birthday date, including across reruns and concurrent requests.
+The greeting has a separate persisted claim from leader reminders. Register
+**CEYC ARC** as an approved sender in SMSOnlineGH; the app cannot register or
+approve a provider sender automatically. No catch-up greetings are sent for
+past birthdays. A saved sender (default **CEYC ARC**) still controls leader reminders.
+
 The base administrator opens **Users & Roles → SMS & Google Drive setup**, saves
 the SMSOnlineGH API key and approved sender, and saves Google web OAuth client
 credentials. The API key and OAuth secrets are encrypted at rest with AES-GCM

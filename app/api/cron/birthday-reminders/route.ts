@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dateInAccra } from '@/lib/birthdays';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { birthdaySmsContacts, birthdaySmsJobs, sendBirthdaySms, SmsRejectedError, type SmsAccount } from '@/lib/birthday-sms';
+import { birthdayGreetingJobs, birthdaySmsContacts, birthdaySmsJobs, sendBirthdaySms, SmsRejectedError, type BirthdaySmsMember, type SmsAccount } from '@/lib/birthday-sms';
 import { smsSettings } from '@/lib/integration-settings';
 import { fetchAllRows } from '@/lib/pagination';
 export const maxDuration = 60;
@@ -13,13 +13,14 @@ export async function GET(request: NextRequest) {
     const sms = await smsSettings();
     if (!admin || !sms.apiKey || !sms.sender) return NextResponse.json({ error: 'Complete SMSOnlineGH setup in Users & Roles. Birthday email sending has been replaced by SMS.' }, { status: 503 });
     const [members, accounts, roles] = await Promise.all([
-      fetchAllRows<{ id: string; name: string; fellowship: string; birthday: string }>((from,to) => admin.from('members').select('id,name,fellowship,birthday').eq('is_active',true).order('id').range(from,to)),
+      fetchAllRows<BirthdaySmsMember>((from,to) => admin.from('members').select('id,name,fellowship,birthday,phone').eq('is_active',true).is('merged_into_id',null).order('id').range(from,to)),
       fetchAllRows<SmsAccount>((from,to) => admin.from('staff_accounts').select('phone,fellowship,role_id,is_active,birthday_sms_enabled').order('id').range(from,to)),
       admin.from('staff_roles').select('id,key').in('key',['fellowship_leader','admin']),
     ]);
     if (roles.error) throw roles.error;
     const contacts = birthdaySmsContacts(accounts, roles.data.find(role => role.key === 'fellowship_leader')?.id || null, roles.data.find(role => role.key === 'admin')?.id || null);
-    const jobs = birthdaySmsJobs(members,contacts,dateInAccra());
+    const today = dateInAccra();
+    const jobs = [...birthdayGreetingJobs(members,today), ...birthdaySmsJobs(members,contacts,today)];
     let accepted=0, skipped=0; const errors: string[]=[];
     for (const job of jobs) {
       // A persisted unique claim prevents overlapping runs and uncertain retries from sending twice.
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
         if (!retry.data) { skipped++; continue; }
       } else if (claim.error) { errors.push('Could not record SMS claim.'); continue; }
       let messageId: string;
-      try { messageId = await sendBirthdaySms(job.recipient,job.text,sms); }
+      try { messageId = await sendBirthdaySms(job.recipient,job.text,{...sms,sender:job.sender || sms.sender}); }
       catch (error) {
         const status = error instanceof SmsRejectedError ? 'failed' : 'uncertain';
         const saved = await admin.from('birthday_sms_deliveries').update({status,error_code:status === 'failed'?'provider_rejected':'acceptance_unknown',updated_at:new Date().toISOString()}).eq('idempotency_key',job.key);

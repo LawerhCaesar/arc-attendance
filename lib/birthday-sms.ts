@@ -5,6 +5,23 @@ import { normalizeDuplicatePhone } from './member-duplicates';
 import { smsSettings, type SmsSettings } from './integration-settings';
 
 export interface SmsAccount { phone: string | null; fellowship: string | null; role_id: string; is_active: boolean; birthday_sms_enabled: boolean }
+export const BIRTHDAY_GREETING_SENDER = 'CEYC ARC';
+export interface BirthdaySmsMember { id: string; name: string; birthday: string; fellowship: string; phone?: string | null }
+export function birthdayGreetingJobs(members: BirthdaySmsMember[], today: string) {
+  const recipients = new Set<string>();
+  return members.flatMap(member => {
+    const birthday = nextBirthday(member.birthday || '', today);
+    const phone = normalizeDuplicatePhone(member.phone);
+    if (!birthday || birthday.daysUntil !== 0 || !phone || recipients.has(phone)) return [];
+    recipients.add(phone);
+    const recipient = `+${phone}`;
+    return [{ member, recipient, scheduledFor: birthday.nextDate, notificationType: 'birthday_sms_greeting',
+      // A shared/legacy duplicate phone receives only one greeting per birthday date.
+      key: createHash('sha256').update(JSON.stringify(['sms-greeting', recipient, birthday.nextDate])).digest('hex'),
+      sender: BIRTHDAY_GREETING_SENDER,
+      text: `Happy birthday, ${member.name.trim() || 'dear brethren'}! CEYC ARC celebrates you. May God bless you with joy, good health and a fruitful year ahead. We love you!` }];
+  });
+}
 export function birthdaySmsContacts(accounts: SmsAccount[], leaderRoleId: string | null, adminRoleId: string | null) {
   return accounts.flatMap(account => {
     if (!account.is_active || account.birthday_sms_enabled === false) return [];
@@ -14,13 +31,14 @@ export function birthdaySmsContacts(accounts: SmsAccount[], leaderRoleId: string
     return phone ? [{ phone: `+${phone}`, fellowship: all ? null : account.fellowship }] : [];
   });
 }
-export function birthdaySmsJobs(members: { id: string; name: string; birthday: string; fellowship: string }[], contacts: ReturnType<typeof birthdaySmsContacts>, today: string) {
+export function birthdaySmsJobs(members: BirthdaySmsMember[], contacts: ReturnType<typeof birthdaySmsContacts>, today: string) {
   return members.flatMap(member => {
     const birthday = nextBirthday(member.birthday || '', today);
     if (!birthday || ![7,1].includes(birthday.daysUntil)) return [];
     const recipients = new Set(contacts.filter(contact => contact.fellowship === null || contact.fellowship === member.fellowship).map(contact => contact.phone));
     return [...recipients].map(recipient => ({ member, recipient, scheduledFor: birthday.nextDate, notificationType: `birthday_sms_${birthday.daysUntil}_day`,
       key: createHash('sha256').update(JSON.stringify(['sms', member.id, recipient, birthday.nextDate, birthday.daysUntil])).digest('hex'),
+      sender: undefined,
       text: `ARC birthday reminder: ${member.name} (${member.fellowship}) celebrates ${birthday.daysUntil === 1 ? 'tomorrow' : 'in 7 days'}, ${birthday.display}.` }));
   });
 }

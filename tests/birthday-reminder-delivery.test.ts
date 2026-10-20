@@ -13,7 +13,7 @@ const originalFetch=globalThis.fetch;
 before(async()=>{cron=await import('../app/api/cron/birthday-reminders/route');});
 afterEach(()=>{globalThis.fetch=originalFetch;});
 const request=()=>new NextRequest('http://localhost/api/cron/birthday-reminders',{headers:{authorization:'Bearer fixture-cron'}});
-function fixture(options:{providerFailure?:boolean;uncertain?:boolean;claimFailure?:boolean;rosterFailure?:boolean;finalSaveFailure?:boolean}={}){
+function fixture(options:{providerFailure?:boolean;uncertain?:boolean;claimFailure?:boolean;rosterFailure?:boolean;finalSaveFailure?:boolean;celebrants?:boolean;noStaff?:boolean}={}){
  const sent:{recipient:string;body:Record<string,unknown>}[]=[];const history=new Map<string,Record<string,unknown>>();
  const nextWeek=new Date(`${dateInAccra()}T00:00:00Z`);nextWeek.setUTCDate(nextWeek.getUTCDate()+7);
  globalThis.fetch=async(input,init)=>{
@@ -25,8 +25,14 @@ function fixture(options:{providerFailure?:boolean;uncertain?:boolean;claimFailu
    return new Response(JSON.stringify(options.providerFailure?{handshake:{id:1,label:'HSHK_AUTH_FAILED'}}:{handshake:{id:0,label:'HSHK_OK'},data:{destinations:[{id:`sms-${sent.length}`,to:body.destinations[0],status:{id:2105,label:'DS_SUBMIT_ENROUTE'}}]}}),{status:200});
   }
   if(url.pathname.endsWith('/app_integrations'))rows=[];
-  else if(url.pathname.endsWith('/members')){assert.equal(url.searchParams.get('is_active'),'eq.true');assert.ok(!url.searchParams.get('select')?.includes('phone'));if(options.rosterFailure)return new Response('{}',{status:500});rows=[{id:'member-one',name:'Ama',fellowship:'Shalach',birthday:nextWeek.toISOString().slice(0,10)}];}
-  else if(url.pathname.endsWith('/staff_accounts'))rows=[
+  else if(url.pathname.endsWith('/members')){assert.equal(url.searchParams.get('is_active'),'eq.true');assert.equal(url.searchParams.get('merged_into_id'),'is.null');assert.ok(url.searchParams.get('select')?.includes('phone'));if(options.rosterFailure)return new Response('{}',{status:500});rows=[{id:'member-one',name:'Ama',fellowship:'Shalach',birthday:nextWeek.toISOString().slice(0,10)},...(options.celebrants?[
+   {id:'birthday-today',name:'Kojo',fellowship:'Shalach',birthday:dateInAccra(),phone:'0551234567'},
+   {id:'duplicate-phone',name:'Kojo duplicate',fellowship:'Shalach',birthday:dateInAccra(),phone:'+233551234567'},
+   {id:'no-phone',name:'No phone',fellowship:'Shalach',birthday:dateInAccra(),phone:''},
+   {id:'invalid-phone',name:'Invalid phone',fellowship:'Shalach',birthday:dateInAccra(),phone:'not-a-number'},
+   {id:'bad-birthday',name:'Bad birthday',fellowship:'Shalach',birthday:'invalid',phone:'0591234567'},
+  ]:[])];}
+  else if(url.pathname.endsWith('/staff_accounts'))rows=options.noStaff?[]:[
    {phone:'0201234567',fellowship:'Shalach',role_id:'leader-role',is_active:true,birthday_sms_enabled:true},
    {phone:'+233201234567',fellowship:'Shalach',role_id:'leader-role',is_active:true,birthday_sms_enabled:true},
    {phone:'0551234567',fellowship:'Pleroma',role_id:'leader-role',is_active:true,birthday_sms_enabled:true},
@@ -55,6 +61,21 @@ test('birthday cron sends only scoped leader/admin SMS, deduplicates normalized 
 });
 test('concurrent cron runs persist one claim per SMS instead of sending twice',async()=>{
  const {sent}=fixture();await Promise.all([cron.GET(request()),cron.GET(request())]);assert.equal(sent.length,2);
+});
+test('birthday greetings go to the roster phone from CEYC ARC and remain separate from leader reminders',async()=>{
+ const {sent,history}=fixture({celebrants:true});const result=await (await cron.GET(request())).json();assert.equal(result.accepted,3);
+ const greetings=sent.filter(item=>String(item.body.text).startsWith('Happy birthday'));
+ assert.equal(greetings.length,1);assert.equal(greetings[0].recipient,'233551234567');assert.equal(greetings[0].body.sender,'CEYC ARC');assert.match(String(greetings[0].body.text),/Happy birthday, Kojo!/);
+ assert.ok(sent.filter(item=>!String(item.body.text).startsWith('Happy birthday')).every(item=>item.body.sender==='ARC'));
+ assert.equal([...history.values()].filter(item=>item.notification_type==='birthday_sms_greeting').length,1);
+ await cron.GET(request());assert.equal(sent.length,3);
+});
+test('greetings do not require staff recipients and concurrent runs send just one greeting',async()=>{
+ const {sent}=fixture({celebrants:true,noStaff:true});await Promise.all([cron.GET(request()),cron.GET(request())]);assert.equal(sent.length,1);assert.equal(sent[0].body.sender,'CEYC ARC');
+});
+test('an uncertain birthday greeting is retained for review and never resent automatically',async()=>{
+ const {sent,history}=fixture({celebrants:true,noStaff:true,uncertain:true});assert.equal((await cron.GET(request())).status,502);
+ assert.equal([...history.values()][0].status,'uncertain');await cron.GET(request());assert.equal(sent.length,1);
 });
 test('provider rejection records failure, while network uncertainty is retained without an automatic resend',async()=>{
  let calls=fixture({providerFailure:true});assert.equal((await cron.GET(request())).status,502);assert.ok([...calls.history.values()].every(item=>item.status==='failed'));

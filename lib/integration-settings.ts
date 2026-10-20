@@ -35,7 +35,7 @@ export async function writeIntegration(provider: IntegrationProvider, value: obj
 }
 export async function smsSettings(): Promise<SmsSettings> {
   const saved = await readIntegration<SmsSettings>('sms_online_gh');
-  return { apiKey: saved.apiKey || process.env.SMSONLINEGH_API_KEY, sender: saved.sender || process.env.SMSONLINEGH_SENDER };
+  return { apiKey: saved.apiKey || process.env.SMSONLINEGH_API_KEY, sender: saved.sender || process.env.SMSONLINEGH_SENDER || 'CEYC ARC' };
 }
 export async function driveSettings(): Promise<DriveSettings> {
   const saved = await readIntegration<DriveSettings>('google_drive');

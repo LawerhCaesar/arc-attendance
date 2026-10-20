@@ -72,7 +72,7 @@ export default function WelfareBirthdayCenter() {
       <section className="rounded-2xl border border-rose-100 bg-rose-50 p-5">
         <h2 className="font-bold text-rose-950">Automatic welfare reminders</h2>
         <p className="mt-1 text-sm leading-6 text-rose-800">
-          A daily check sends birthday SMS reminders to fellowship leaders and administrators who have saved a phone number and enabled reminders in My profile. Reminders are sent seven days and one day before each birthday. SMSOnlineGH setup is managed by the base administrator in Users &amp; Roles.
+          At 8 a.m., birthday greetings are sent directly to active brethren’s roster contact numbers from CEYC ARC. Leaders and administrators also receive reminders seven days and one day before each birthday, using their saved profile number and reminder preference. SMSOnlineGH setup is managed by the base administrator in Users &amp; Roles.
         </p>
       </section>
 
