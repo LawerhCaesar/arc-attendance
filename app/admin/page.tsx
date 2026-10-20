@@ -6,6 +6,7 @@ import DashboardShell from '@/components/DashboardShell';
 import PastorDashboard from '@/components/PastorDashboard';
 import FellowshipServiceBreakdown from '@/components/FellowshipServiceBreakdown';
 import MemberRoster from '@/components/MemberRoster';
+import UpcomingFellowshipBirthdays from '@/components/UpcomingFellowshipBirthdays';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
 import FirstTimerWorkspace from '@/components/FirstTimerWorkspace';
@@ -151,6 +152,11 @@ export default function AdminDashboard() {
 
         {activeTab === 'members' && (
           <div>
+            {sessionRole === 'fellowship_leader' && (
+              <div className="mb-6">
+                <UpcomingFellowshipBirthdays key={fellowshipScope} />
+              </div>
+            )}
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Member Roster</h2>
               <p className="text-gray-500 text-sm mt-1">Manage brethren and organize fellowships into cells and BSCT groups</p>

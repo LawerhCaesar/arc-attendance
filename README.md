@@ -245,7 +245,8 @@ confirmation and at least 12 characters (at most 72 UTF-8 bytes). The base
 administrator can use this too, retaining full privileges after a rename.
 Other administrators cannot edit the base administrator account.
 
-Fellowship leaders also see **Upcoming birthdays** above their profile settings:
+Fellowship leaders also see **Upcoming birthdays** above the member roster on
+their homepage and above their profile settings:
 today and the next 60 days, ordered soonest first. The server uses the verified
 account's fellowship and active members only, ignores caller-supplied fellowship
 filters, and returns only member names and birthday timing. This list works
