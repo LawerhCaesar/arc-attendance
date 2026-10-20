@@ -62,13 +62,15 @@ export function nextBirthday(value: string, todayIso: string): BirthdayOccurrenc
     birthday = Date.UTC(birthdayYear, month - 1, day);
   }
 
-  const nextDate = `${birthdayYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  // Feb 29 anniversaries fall on March 1 in non-leap years, while the saved
+  // birthday label remains February 29. Always return a real calendar date.
+  const nextDate = new Date(birthday).toISOString().slice(0, 10);
   return {
     day,
     month,
     nextDate,
     daysUntil: Math.round((birthday - today) / 86_400_000),
-    display: new Date(birthday).toLocaleDateString('en-GB', {
+    display: validationDate.toLocaleDateString('en-GB', {
       timeZone: 'UTC', day: 'numeric', month: 'long',
     }),
   };

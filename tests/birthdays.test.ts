@@ -44,3 +44,10 @@ test('accepts ISO birthdays and rejects invalid values', () => {
 test('uses the Accra calendar date', () => {
   assert.equal(dateInAccra(new Date('2026-09-09T23:30:00Z')), '2026-09-09');
 });
+
+test('leap-day birthdays keep their birthday label and use a valid anniversary date', () => {
+  const birthday = nextBirthday('29-02', '2026-10-20');
+  assert.equal(birthday?.display, '29 February');
+  assert.equal(birthday?.nextDate, '2027-03-01');
+  assert.equal(nextBirthday('29-02', '2028-01-01')?.nextDate, '2028-02-29');
+});

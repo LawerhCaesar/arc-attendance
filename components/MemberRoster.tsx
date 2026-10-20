@@ -34,8 +34,9 @@ const emptyForm = (): Omit<Member, 'id'> => ({
   name: '', phone: '', fellowship: '', designation: 'Member', birthday: '', location: '', cell_id: null, bsct_group_id: null,
 });
 
-export default function MemberRoster({ canReviewDuplicates = false, fellowshipScope }: { canReviewDuplicates?: boolean; fellowshipScope?: string }) {
+export default function MemberRoster({ canReviewDuplicates = false, fellowshipScope, onRosterChanged }: { canReviewDuplicates?: boolean; fellowshipScope?: string; onRosterChanged?: () => void }) {
   const [members, setMembers] = useState<Member[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [cells, setCells] = useState<FellowshipCell[]>([]);
   const [bsctGroups, setBsctGroups] = useState<BsctGroup[]>([]);
   const [loadError, setLoadError] = useState('');
@@ -57,25 +58,29 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicateReviewVersion, setDuplicateReviewVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const memberRequestVersion = useRef(0);
 
   const fetchMembers = useCallback(async () => {
+    const requestVersion = ++memberRequestVersion.current;
     setIsLoading(true);
     setLoadError('');
     try {
       const [res, structureRes] = await Promise.all([
-        fetch('/api/members', { cache: 'no-store' }),
+        fetch(showArchived ? '/api/members/archived' : '/api/members', { cache: 'no-store' }),
         fetch('/api/members/structure', { cache: 'no-store' }),
       ]);
       const result = await res.json();
+      if (requestVersion !== memberRequestVersion.current) return;
       if (!res.ok) throw new Error(result.error || 'Unable to load your roster.');
       setMembers(result);
       const structure = await structureRes.json();
+      if (requestVersion !== memberRequestVersion.current) return;
       if (!structureRes.ok) throw new Error(structure.error || 'Unable to load fellowship cells.');
       setCells(structure.cells);
       setBsctGroups(structure.bsctGroups);
-    } catch (caught) { setLoadError(caught instanceof Error ? caught.message : 'Unable to load your roster.'); }
-    setIsLoading(false);
-  }, []);
+    } catch (caught) { if (requestVersion === memberRequestVersion.current) setLoadError(caught instanceof Error ? caught.message : 'Unable to load your roster.'); }
+    if (requestVersion === memberRequestVersion.current) setIsLoading(false);
+  }, [showArchived]);
 
   useEffect(() => { setMembers([]); setCells([]); setBsctGroups([]); setCellFilter('all'); fetchMembers(); }, [fetchMembers, fellowshipScope]);
 
@@ -150,6 +155,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       });
       if (res.ok) {
         setSuccessMsg(isEdit ? 'Member updated.' : 'Member added to roster.');
+        onRosterChanged?.();
         setShowForm(false);
         await fetchMembers();
         setDuplicateReviewVersion(value => value + 1);
@@ -168,21 +174,24 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
     setIsSaving(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remove this member from the roster?')) return;
+  const handleArchive = async (id: string, restore = false) => {
+    if (!restore && !confirm('Archive this member? Their details and attendance history will be kept. Cell and BSCT assignments will be cleared. You can restore them later.')) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/members/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/members/${id}/archive`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: restore ? 'restore' : 'archive' }),
+      });
       if (res.ok) {
-        setSuccessMsg('Member removed.');
+        setSuccessMsg(restore ? 'Member restored. Assign their cell and BSCT group from the active roster.' : 'Member archived. Their details and attendance history are preserved.');
+        onRosterChanged?.();
         await fetchMembers();
         setDuplicateReviewVersion(value => value + 1);
         setTimeout(() => setSuccessMsg(null), 3000);
       } else {
         const result = await res.json();
-        setLoadError(result.error || 'Unable to remove this member.');
+        setLoadError(result.error || 'Unable to change this member’s archive status.');
       }
-    } catch { setLoadError('Unable to remove this member.'); }
+    } catch { setLoadError('Unable to change this member’s archive status.'); }
     setDeletingId(null);
   };
 
@@ -256,6 +265,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
         .then(async res => {
           if (res.ok) {
             setSuccessMsg(`Imported and saved ${imported.length} members to roster.`);
+            onRosterChanged?.();
             fetchMembers();
             setDuplicateReviewVersion(value => value + 1);
             setTimeout(() => setSuccessMsg(null), 5000);
@@ -281,16 +291,23 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   return (
     <div className="space-y-4">
       {fellowshipScope && <p className="rounded-lg bg-blue-50 p-3 text-sm font-semibold text-blue-900">{fellowshipScope} Fellowship · Manage your brethren, cells and BSCT groups</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-lg border border-gray-200 bg-white p-1" aria-label="Roster status">
+          <button type="button" aria-pressed={!showArchived} onClick={() => { if (!showArchived) return; setMembers([]); setShowArchived(false); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${!showArchived ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>Active brethren</button>
+          <button type="button" aria-pressed={showArchived} onClick={() => { if (showArchived) return; setMembers([]); setShowArchived(true); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${showArchived ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>Archived brethren</button>
+        </div>
+        {showArchived && <p className="text-sm text-gray-600">Archived details and attendance are kept. Restore a member to return them to the active roster.</p>}
+      </div>
       {loadError && <DismissibleBanner role="alert" onDismiss={() => setLoadError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{loadError} <button type="button" onClick={fetchMembers} className="ml-2 underline">Retry</button></DismissibleBanner>}
       {/* Success banner */}
       {successMsg && (
         <DismissibleBanner onDismiss={() => setSuccessMsg(null)} className="p-3 bg-green-100 text-green-800 rounded-xl text-sm font-medium">{successMsg}</DismissibleBanner>
       )}
 
-      {canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
-      {!loadError && <FellowshipStructure members={members} cells={cells} bsctGroups={bsctGroups} fellowshipScope={fellowshipScope} loading={isLoading} onChanged={fetchMembers} onEditMember={id => { const member = members.find(member => member.id === id); if (member) openEdit(member); }} />}
+      {!showArchived && canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
+      {!showArchived && !loadError && <FellowshipStructure members={members} cells={cells} bsctGroups={bsctGroups} fellowshipScope={fellowshipScope} loading={isLoading} onChanged={fetchMembers} onEditMember={id => { const member = members.find(member => member.id === id); if (member) openEdit(member); }} />}
 
-      <section aria-labelledby="member-export-heading" className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      {!showArchived && <section aria-labelledby="member-export-heading" className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 id="member-export-heading" className="font-semibold text-gray-900">Export Member Data</h3>
@@ -302,7 +319,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
           </button>
         </div>
         {exportError && <DismissibleBanner role="alert" onDismiss={() => setExportError(null)} className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{exportError}</DismissibleBanner>}
-      </section>
+      </section>}
 
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -331,11 +348,11 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
             <option value="all">All Fellowships</option>
             {fellowships.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
-          <select aria-label="Filter members by cell" value={cellFilter} onChange={event => setCellFilter(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
+          {!showArchived && <select aria-label="Filter members by cell" value={cellFilter} onChange={event => setCellFilter(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm">
             <option value="all">All Cells</option><option value="unassigned">No Cell Assigned</option>
             {cells.filter(cell => !fellowshipScope || cell.fellowship === fellowshipScope).map(cell => <option key={cell.id} value={cell.id}>{!fellowshipScope ? `${cell.fellowship} · ` : ''}Cell {cell.number}</option>)}
-          </select>
-          <div className="flex gap-2">
+          </select>}
+          {!showArchived && <div className="flex gap-2">
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload-roster" />
             <label htmlFor="excel-upload-roster" className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition cursor-pointer whitespace-nowrap flex items-center justify-center">
               Import Database
@@ -346,7 +363,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
             >
               + Add Member
             </button>
-          </div>
+          </div>}
         </div>
         <p className="text-xs text-gray-400 mt-2">
           Showing {filtered.length} of {members.length} members
@@ -461,9 +478,9 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
           <div className="text-5xl mb-4">📋</div>
           <p className="text-gray-600 font-medium">
-            {members.length === 0 ? 'No members yet' : 'No members match your filters'}
+            {members.length === 0 ? showArchived ? 'No archived brethren' : 'No members yet' : 'No members match your filters'}
           </p>
-          {members.length === 0 && (
+          {members.length === 0 && !showArchived && (
             <p className="text-sm text-gray-400 mt-1">
               Click &quot;Add Member&quot; to build the roster used for Cell Leader Check-In.
             </p>
@@ -505,18 +522,18 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                     <td className="px-5 py-3 text-sm text-gray-500">{member.location || '—'}</td>
                     <td className="px-5 py-3">
                       <div className="flex gap-2">
-                        <button
+                        {!showArchived && <button
                           onClick={() => openEdit(member)}
                           className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition"
                         >
                           Edit
-                        </button>
+                        </button>}
                         <button
-                          onClick={() => handleDelete(member.id)}
+                          onClick={() => handleArchive(member.id, showArchived)}
                           disabled={deletingId === member.id}
                           className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition disabled:opacity-50"
                         >
-                          {deletingId === member.id ? '…' : 'Remove'}
+                          {deletingId === member.id ? '…' : showArchived ? 'Restore' : 'Archive'}
                         </button>
                       </div>
                     </td>

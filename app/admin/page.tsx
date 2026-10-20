@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import DashboardShell from '@/components/DashboardShell';
+import DashboardShell, { type DashboardTab } from '@/components/DashboardShell';
 import PastorDashboard from '@/components/PastorDashboard';
 import FellowshipServiceBreakdown from '@/components/FellowshipServiceBreakdown';
 import MemberRoster from '@/components/MemberRoster';
 import UpcomingFellowshipBirthdays from '@/components/UpcomingFellowshipBirthdays';
+import FellowshipBirthdays from '@/components/FellowshipBirthdays';
+import FellowshipAttendanceHistory from '@/components/FellowshipAttendanceHistory';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
 import FirstTimerWorkspace from '@/components/FirstTimerWorkspace';
@@ -16,9 +18,7 @@ import PastSundaysList from '@/components/PastSundaysList';
 import AccessManagement from '@/components/AccessManagement';
 import WelfareBirthdayCenter from '@/components/WelfareBirthdayCenter';
 import PastoralWeekly from '@/components/PastoralWeekly';
-import type { Permission } from '@/lib/permissions';
-
-type AdminTab = Exclude<Permission, 'entry'>;
+type AdminTab = DashboardTab;
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'overview',             label: 'Overview',          icon: '📊' },
@@ -33,7 +33,17 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'raw-data',             label: 'Raw Data',          icon: '🗃️' },
   { id: 'welfare',              label: 'Welfare / Birthdays', icon: '🎂' },
   { id: 'users',                label: 'Users & Roles',     icon: '🔐' },
+  { id: 'fellowship-birthdays',  label: 'Birthdays',         icon: '🎂' },
+  { id: 'fellowship-attendance', label: 'Attendance History', icon: '📈' },
 ];
+
+// These scoped views belong to the fellowship roster permission. They do not
+// grant access to church-wide birthday or raw attendance endpoints.
+function visibleTabs(role: string, permissions: string[]) {
+  return tabs.filter(tab => tab.id === 'fellowship-birthdays' || tab.id === 'fellowship-attendance'
+    ? role === 'fellowship_leader' && permissions.includes('members')
+    : permissions.includes(tab.id));
+}
 
 export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
@@ -42,6 +52,7 @@ export default function AdminDashboard() {
   const [sessionUsername, setSessionUsername] = useState('');
   const [fellowshipScope, setFellowshipScope] = useState<string | undefined>();
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [rosterVersion, setRosterVersion] = useState(0);
   const router = useRouter();
 
   useEffect(() => {
@@ -52,7 +63,7 @@ export default function AdminDashboard() {
           return;
         }
         const session = await res.json();
-        const visible = tabs.filter(tab => session.permissions?.includes(tab.id));
+        const visible = visibleTabs(session.role, session.permissions || []);
         if (!visible.length) {
           router.push('/entry');
           return;
@@ -80,7 +91,7 @@ export default function AdminDashboard() {
 
   return (
     <DashboardShell
-      navigation={tabs.filter(tab => permissions.includes(tab.id))}
+      navigation={visibleTabs(sessionRole, permissions)}
       activeTab={activeTab}
       onNavigate={setActiveTab}
       onLogout={handleLogout}
@@ -97,6 +108,8 @@ export default function AdminDashboard() {
           <PastorDashboard onNavigate={destination => { if (permissions.includes(destination)) setActiveTab(destination); }} allowedDestinations={permissions} />
         )}
         {activeTab === 'care' && <PastoralWeekly assignedOnly />}
+        {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-birthdays' && <FellowshipBirthdays key={fellowshipScope} />}
+        {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-attendance' && <FellowshipAttendanceHistory key={fellowshipScope} />}
 
         { activeTab === 'past-entry' && (
           <div>
@@ -154,14 +167,14 @@ export default function AdminDashboard() {
           <div>
             {sessionRole === 'fellowship_leader' && (
               <div className="mb-6">
-                <UpcomingFellowshipBirthdays key={fellowshipScope} />
+                <UpcomingFellowshipBirthdays key={`${fellowshipScope}-${rosterVersion}`} />
               </div>
             )}
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Member Roster</h2>
               <p className="text-gray-500 text-sm mt-1">Manage brethren and organize fellowships into cells and BSCT groups</p>
             </div>
-            <MemberRoster key={`${sessionRole}-${fellowshipScope || 'all'}`} fellowshipScope={fellowshipScope} canReviewDuplicates={sessionRole === 'admin'} />
+            <MemberRoster key={`${sessionRole}-${fellowshipScope || 'all'}`} fellowshipScope={fellowshipScope} canReviewDuplicates={sessionRole === 'admin'} onRosterChanged={() => setRosterVersion(value => value + 1)} />
           </div>
         )}
 

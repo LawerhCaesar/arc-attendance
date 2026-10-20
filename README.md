@@ -252,6 +252,24 @@ account's fellowship and active members only, ignores caller-supplied fellowship
 filters, and returns only member names and birthday timing. This list works
 independently of email delivery configuration.
 
+The fellowship leader sidebar includes **Birthdays** (the full active fellowship
+list, with name search, month filters and missing birthday details) and
+**Attendance History** (service graph, exact counts and expandable individual
+service dates). Attendance can be filtered by dates or member, with archived
+brethren included by default. Only explicitly recorded absences count as absent;
+overlaps count once per person/service, with present evidence taking precedence.
+Legacy attendance is linked only when a member can be identified unambiguously.
+These views use the existing Member Roster permission and never grant access to
+church-wide attendance or birthdays.
+
+**Member Roster → Archive** retains the member and attendance records while
+removing them from active check-in, birthday lists and cell/BSCT assignments.
+**Archived brethren → Restore** returns them to the active roster; cell and BSCT
+assignments must be made again. Previously removed (soft-deleted) records appear
+in this archive, while records retired by approved duplicate merges do not.
+Restore rejects a phone number already held by another active member. No new
+database migration is needed for these views or archiving.
+
 Staff can sign in with their saved email or username and the same password.
 Emails are normalized and unique across managed and configured accounts.
 **Users & Roles → Edit account** remains available for administrators. An email
