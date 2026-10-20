@@ -269,7 +269,10 @@ have **Unarchive**. Actions stay visible when the table scrolls horizontally.
 Archiving retains stored history but excludes the person from attendance records,
 calculations, active check-in, birthday lists and cell/BSCT assignments.
 Unarchiving returns them to active views and calculations; cell and BSCT assignments
-must be made again. Previously removed (soft-deleted) records appear in the roster,
+must be made again. The confirmed saved status updates the roster immediately,
+so restored records leave **Archived brethren** and appear in **Active brethren**.
+Repeated requests reconcile the saved status, and blocked restores show their
+reason beside the affected row. Previously removed (soft-deleted) records appear in the roster,
 while records retired by approved duplicate merges do not.
 Restore rejects a phone number already held by another active member. Duplicate
 phone messages name the existing member when that record is within the staff

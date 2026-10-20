@@ -1,7 +1,7 @@
 'use client';
 import DismissibleBanner from './DismissibleBanner';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef } from 'react';
 import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 import MemberEditSignIn from '@/components/MemberEditSignIn';
@@ -58,6 +58,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [archiveError, setArchiveError] = useState<{ id: string; message: string } | null>(null);
   const [duplicateReviewVersion, setDuplicateReviewVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const memberRequestVersion = useRef(0);
@@ -181,22 +182,31 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const handleArchive = async (id: string, restore = false) => {
     if (!restore && !confirm('Archive this member? Their details and attendance history will be kept. Cell and BSCT assignments will be cleared. They will return to the active roster when recorded present again, or you can restore them manually.')) return;
     setDeletingId(id);
+    setArchiveError(null);
+    setSuccessMsg(null);
     try {
       const res = await fetch(`/api/members/${id}/archive`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: restore ? 'restore' : 'archive' }),
       });
-      if (res.ok) {
-        setSuccessMsg(restore ? 'Member unarchived. Assign their cell and BSCT group from the active roster.' : 'Member archived. They remain in the roster and are excluded from attendance records and calculations.');
-        onRosterChanged?.();
-        await fetchMembers();
-        setDuplicateReviewVersion(value => value + 1);
-        setTimeout(() => setSuccessMsg(null), 3000);
-      } else {
-        const result = await res.json();
-        setLoadError(result.error || 'Unable to change this member’s archive status.');
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Unable to change this member’s archive status.');
+      if (result.member?.id !== id || result.member.is_active !== restore) throw new Error('The saved status could not be confirmed. Refresh the roster and try again.');
+      // Apply the confirmed database row directly. A pending roster request
+      // must not put the old archived state back after this action succeeds.
+      memberRequestVersion.current++;
+      setIsLoading(false);
+      setLoadError('');
+      setMembers(current => current.map(member => member.id === id ? result.member : member));
+      if (!restore) {
+        setCells(current => current.map(cell => cell.leader_member_id === id ? { ...cell, leader_member_id: null } : cell));
+        setBsctGroups(current => current.map(group => group.leader_member_id === id ? { ...group, leader_member_id: null } : group));
       }
-    } catch { setLoadError('Unable to change this member’s archive status.'); }
-    setDeletingId(null);
+      setSuccessMsg(restore ? 'Member unarchived. Assign their cell and BSCT group from the active roster.' : 'Member archived. They remain in the roster and are excluded from attendance records and calculations.');
+      onRosterChanged?.();
+      setDuplicateReviewVersion(value => value + 1);
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (error) { setArchiveError({ id, message: `${restore ? 'Could not unarchive this member.' : 'Could not archive this member.'} ${error instanceof Error ? error.message : 'Please try again.'}` }); }
+    finally { setDeletingId(null); }
   };
 
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -504,7 +514,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map(member => (
-                  <tr key={member.id} className="hover:bg-gray-50 transition-colors">
+                  <Fragment key={member.id}><tr className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
@@ -541,7 +551,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                         </button>
                       </div>
                     </td>
-                  </tr>
+                  </tr>{archiveError?.id === member.id && <tr><td colSpan={8} className="bg-red-50 px-5 py-3"><p role="alert" className="text-sm font-medium text-red-800">{archiveError.message}</p></td></tr>}</Fragment>
                 ))}
               </tbody>
             </table>
