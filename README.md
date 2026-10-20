@@ -293,14 +293,20 @@ backfilled by this migration.
 
 Apply `supabase/migrations/20261020021249_fellowship_sunday_projections.sql`
 for **Sunday Projections**. Fellowship leaders select active brethren expected
-for a chosen Sunday and save their forecast. They can edit it until **12 noon
+for a chosen Sunday and save their forecast. They can edit it until **9 a.m.
 on that Sunday in Africa/Accra**, including while attendance is being recorded.
 The database checks the cutoff at save time. Concurrent edits use revisions so
 one leader cannot silently overwrite another's forecast.
 
 The comparison distinguishes projected attendees who came, projected attendees
 without a present record, and unprojected arrivals (including visitors). Missing
-attendance is not automatically marked absent. Missing projections remain
+attendance is not automatically marked absent. Leaders can add expected first-time visitors
+by name and optional phone number in the projection section. These visitors count
+in both leader and pastor projections without creating roster records. A unique
+normalized phone or unambiguous full-name match links recorded arrivals; uncertain
+matches stay separate. Apply
+`supabase/migrations/20261020025647_projection_guests_and_9am_cutoff.sql` for visitor
+storage and the database-enforced 9 a.m. cutoff. Missing projections remain
 **Not submitted**, distinct from an explicitly saved zero forecast. Archived
 brethren are excluded from both forecast and actual counts while archived;
 unarchiving restores their inclusion. Administrators and pastors with Overview

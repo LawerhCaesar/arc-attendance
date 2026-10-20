@@ -9,7 +9,7 @@ const run=query => execFileSync(psql,[...args,'-c',query],{encoding:'utf8'}).tri
 const tag=`projection-race-${randomUUID()}`;
 const id=randomUUID();
 const sunday=run("select (current_date+(7-extract(dow from current_date)::int)+700)::text");
-const command=`select revision from public.save_fellowship_sunday_projection('${sunday}','Mega',array['${id}']::uuid[],0,'${tag}');`;
+const command=`select revision from public.save_fellowship_sunday_projection('${sunday}','Mega',array['${id}']::uuid[],0,'${tag}','[{"id":"${randomUUID()}","name":"Expected Guest","phone":""}]'::jsonb);`;
 const done=child => new Promise((resolve,reject) => {let stderr='';child.stderr.on('data',chunk => {stderr+=chunk;});child.on('error',reject);child.on('close',code => resolve({code,stderr}));});
 let first;let second;
 try {
@@ -32,6 +32,7 @@ try {
   first.stdin.end('commit;\n');assert.equal((await firstDone).code,0);
   const rejected=await secondDone;assert.notEqual(rejected.code,0);assert.match(rejected.stderr,/Another leader updated/);
   assert.equal(run(`select revision from fellowship_sunday_projections where service_date='${sunday}' and fellowship='Mega'`),'1');
+  assert.equal(run(`select jsonb_array_length(projected_guests) from fellowship_sunday_projections where service_date='${sunday}' and fellowship='Mega'`),'1');
   console.log('PASS: concurrent first saves serialize, and the stale writer cannot overwrite the forecast.');
 } finally {
   first?.kill('SIGTERM');second?.kill('SIGTERM');

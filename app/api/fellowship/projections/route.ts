@@ -7,7 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { dateInAccra } from '@/lib/birthdays';
 import { fetchAllRows } from '@/lib/pagination';
 import { FELLOWSHIPS } from '@/lib/fellowships';
-import { compareSundayProjection, projectionSunday, upcomingSunday, type SundayProjection } from '@/lib/attendance-projections';
+import { compareSundayProjection, parseProjectionGuests, projectionSunday, upcomingSunday, type SundayProjection } from '@/lib/attendance-projections';
 import type { Member, AttendanceRecord } from '@/lib/database';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
     const serviceDate = projectionSunday(body?.serviceDate);
     if (body.fellowship && body.fellowship !== scope) throw new MemberInputError('You can only project attendance for your assigned fellowship.',403);
     if (!Array.isArray(body.memberIds) || body.memberIds.length>10000 || body.memberIds.some((id:unknown) => typeof id !== 'string' || !memberUuid.test(id)) || !Number.isInteger(body.revision) || body.revision<0 || body.revision>2147483647) throw new MemberInputError('Select valid brethren and refresh the projection before saving.');
-    const { data,error } = await admin.rpc('save_fellowship_sunday_projection',{ p_service_date:serviceDate,p_fellowship:scope,p_member_ids:[...new Set(body.memberIds)],p_expected_revision:body.revision,p_updated_by:context.username });
+    const guests = body.guests === undefined ? null : parseProjectionGuests(body.guests);
+    const { data,error } = await admin.rpc('save_fellowship_sunday_projection',{ p_service_date:serviceDate,p_fellowship:scope,p_member_ids:[...new Set(body.memberIds)],p_expected_revision:body.revision,p_updated_by:context.username,p_guests:guests });
     if (error?.code === '40001') throw new MemberInputError(error.message,409);
     if (error?.code === 'P0001' || error?.code === '23514') throw new MemberInputError(error.message);
     if (error) throw error;
