@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from './supabase-admin';
 export interface SmsSettings { apiKey?: string; sender?: string }
 export interface DriveSettings { clientId?: string; clientSecret?: string; refreshToken?: string; folderId?: string }
 export type IntegrationProvider = 'sms_online_gh' | 'google_drive';
+export class IntegrationSettingsError extends Error {}
 const key = () => {
   if (!process.env.ADMIN_SESSION_SECRET) throw new Error('Server encryption is not configured.');
   return createHash('sha256').update(`arc-integrations-v1:${process.env.ADMIN_SESSION_SECRET}`).digest();
@@ -23,9 +24,14 @@ export function decryptSettings<T>(provider: string, value: string): T {
   return JSON.parse(Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8'));
 }
 export async function readIntegration<T>(provider: IntegrationProvider): Promise<T> {
-  const admin = getSupabaseAdmin(); if (!admin) throw new Error('Integration settings are unavailable.');
+  const admin = getSupabaseAdmin(); if (!admin) throw new IntegrationSettingsError('Integration settings are unavailable. Check the server database configuration.');
   const { data, error } = await admin.from('app_integrations').select('encrypted_settings').eq('provider', provider).maybeSingle();
-  if (error) throw new Error('Integration settings are unavailable. Apply the integration migration.');
+  if (error) {
+    console.error('Integration settings lookup failed', { code: error.code });
+    throw new IntegrationSettingsError(['42P01', 'PGRST205'].includes(error.code)
+      ? 'Integration settings are unavailable. Apply the integration migration.'
+      : 'Integration settings could not be loaded from the database. Please try again.');
+  }
   return data ? decryptSettings<T>(provider, data.encrypted_settings) : {} as T;
 }
 export async function writeIntegration(provider: IntegrationProvider, value: object, username: string) {

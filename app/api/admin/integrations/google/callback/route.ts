@@ -3,12 +3,13 @@ import { timingSafeEqual } from 'node:crypto';
 import { getAuthContext } from '@/lib/auth';
 import { isSuperAdmin } from '@/lib/super-admin';
 import { driveSettings, writeIntegration } from '@/lib/integration-settings';
+import { appOrigin } from '@/lib/app-origin';
 export async function GET(request: NextRequest) {
   const context = await getAuthContext();
   if (!isSuperAdmin(context)) return NextResponse.json({ error: 'Base administrator access required.' }, { status: context ? 403 : 401 });
   const expected = request.cookies.get('arc_drive_oauth_state')?.value || '';
   const supplied = request.nextUrl.searchParams.get('state') || '';
-  const redirect = new URL('/admin', process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin);
+  const redirect = new URL('/admin', appOrigin(request.nextUrl.origin));
   let notice = 'Google Drive connection was not completed. Try again from Users & Roles.';
   try {
     if (!expected || expected.length !== supplied.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) throw new Error('Invalid state');

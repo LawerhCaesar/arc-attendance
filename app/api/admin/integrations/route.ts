@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthContext } from '@/lib/auth';
 import { isSuperAdmin } from '@/lib/super-admin';
-import { driveSettings, smsSettings, writeIntegration } from '@/lib/integration-settings';
+import { driveSettings, smsSettings, writeIntegration, IntegrationSettingsError } from '@/lib/integration-settings';
+import { appOrigin } from '@/lib/app-origin';
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -12,9 +13,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ smsConfigured: Boolean(sms.apiKey && sms.sender), smsSender: sms.sender || '',
       googleClientId: drive.clientId || '', googleClientSecretSaved: Boolean(drive.clientSecret),
       driveConnected: Boolean(drive.refreshToken && drive.folderId),
-      googleRedirectUri: new URL('/api/admin/integrations/google/callback', process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).toString() },
+      googleRedirectUri: new URL('/api/admin/integrations/google/callback', appOrigin(request.nextUrl.origin)).toString() },
     { headers: { 'Cache-Control': 'private, no-store' } });
-  } catch { return NextResponse.json({ error: 'Integration settings are unavailable. Apply the integration migration.' }, { status: 503 }); }
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof IntegrationSettingsError ? error.message : 'Integration settings could not be loaded. Please try again.' }, { status: 503 });
+  }
 }
 export async function PATCH(request: NextRequest) {
   const context = await getAuthContext();
