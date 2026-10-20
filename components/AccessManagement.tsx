@@ -5,6 +5,7 @@ import DismissibleBanner from './DismissibleBanner';
 import { TAB_OPTIONS, type Permission } from '@/lib/permissions';
 import { roleAccountGroups, type AccessRole, type ManagedAccount, type ConfiguredAccount } from '@/lib/access-management';
 import { FELLOWSHIPS } from '@/lib/fellowships';
+import IntegrationSettings from './IntegrationSettings';
 
 interface Leader { id: string; name: string; fellowship: string }
 interface LeaderCredential { memberId: string; displayName: string; fellowship: string; username: string; email: string | null; password: string }
@@ -12,7 +13,7 @@ interface AccessData {
   roles: AccessRole[]; accounts: ManagedAccount[]; configuredAccounts: ConfiguredAccount[];
   currentAccountId: string | null; canManageFellowshipLeaders: boolean; canEditSystemRoles: boolean;
   canManageConfiguredAccounts: boolean; fellowshipLeaders: Leader[];
-  birthdayEmailReady: boolean;
+  birthdaySmsReady: boolean;
 }
 const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200';
 const actionClass = 'rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-40';
@@ -118,6 +119,7 @@ export default function AccessManagement() {
   const permissionLabel = (permission: string) => permission === 'users' ? 'Users & Roles' : TAB_OPTIONS.find(tab => tab.id === permission)?.label || permission;
 
   return <div className="space-y-5 text-gray-900">
+    {data?.canManageConfiguredAccounts && <IntegrationSettings />}
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div><h2 className="text-2xl font-bold text-gray-950">Users &amp; Roles</h2><p className="mt-1 text-sm text-gray-600">Open a role to manage account emails, usernames, passwords and shared permissions.</p></div>
       {data && <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => addAccount(data.roles.find(item => item.key === 'welfare')?.id || '')} className={actionClass}>Add Account</button><button type="button" disabled={busy} onClick={() => { setRole({ id: '', name: '', permissions: [] }); openEditor('role'); }} className={actionClass}>Create Role</button></div>}
@@ -139,7 +141,7 @@ export default function AccessManagement() {
           <div className="space-y-4 border-t border-gray-100 p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-gray-900">Accounts in {item.name}</h3><div className="flex flex-wrap gap-2">{canEditRole && <button type="button" disabled={busy} onClick={() => editRole(item)} className={actionClass}>Edit role permissions</button>}{canManageAccounts && <button type="button" disabled={busy} onClick={() => addAccount(item.id)} className={actionClass}>Add account to role</button>}</div></div>
             {!canManageAccounts && <p className="text-sm text-amber-900">Only the base administrator can create or manage fellowship leader accounts.</p>}
-            {item.key === 'fellowship_leader' && <div className="space-y-1 rounded-lg bg-blue-50 p-3 text-sm text-blue-950"><p>Leaders receive birthday reminders for brethren in their assigned fellowship, seven days and one day before each birthday.</p>{item.accounts.some(user => user.is_active && !user.email) && <p className="font-semibold">{item.accounts.filter(user => user.is_active && !user.email).length} active leader accounts need an email address. Leaders can add it in My profile, or you can use Edit account.</p>}{!data.birthdayEmailReady && <p className="font-semibold text-amber-900">Email delivery setup is pending. The base administrator needs to finish the sender setup.</p>}</div>}
+            {item.key === 'fellowship_leader' && <div className="space-y-1 rounded-lg bg-blue-50 p-3 text-sm text-blue-950"><p>Leaders receive birthday SMS reminders for brethren in their assigned fellowship, seven days and one day before each birthday. Leaders add their SMS number and reminder preference in My profile.</p>{!data.birthdaySmsReady && <p className="font-semibold text-amber-900">SMSOnlineGH setup is pending. The base administrator can complete it above.</p>}</div>}
             {!item.count && <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">No accounts in this role yet.</p>}
             <div className="divide-y divide-gray-100">{item.accounts.map(user => <div key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
               <div className="min-w-0"><p className="font-semibold text-gray-950">{user.display_name} {user.id === data.currentAccountId && <span className="text-xs text-blue-700">You</span>}</p><p className="break-all text-sm text-gray-700">@{user.username}</p><p className="break-all text-sm text-gray-700">{user.email || 'No email added'}</p><p className="mt-1 text-xs text-gray-600">{user.is_active ? 'Active' : 'Disabled'}{user.fellowship ? ` · ${user.fellowship}` : ''}</p></div>
@@ -181,7 +183,7 @@ export default function AccessManagement() {
             {account.configuredUsername && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Saving moves this staff login into Users &amp; Roles management. Future username, password and access changes apply here.</p>}
           </> : <>
             <label className="block text-sm font-medium text-gray-700">Role name<input ref={initialFocus} required maxLength={80} value={role.name} onChange={event => setRole({ ...role, name: event.target.value })} className={inputClass} /></label>
-            {role.key === 'fellowship_leader' && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Fellowship leaders retain access to their assigned fellowship roster, cells and BSCT groups only.</p>}
+            {role.key === 'fellowship_leader' && <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Fellowship leaders have access to their assigned fellowship roster, birthdays, attendance and Care Centre.</p>}
             <fieldset><legend className="mb-3 text-sm font-semibold text-gray-900">Allowed tabs and their tools</legend><div className="grid gap-3 sm:grid-cols-2">{[...TAB_OPTIONS, ...(role.key === 'admin' ? [{ id: 'users' as const, label: 'Users & Roles', description: 'Required administrator account management access' }] : [])].map(tab => <label key={tab.id} className="flex items-start gap-3 rounded-lg border border-gray-200 p-3">
               <input type="checkbox" className="mt-1" disabled={tab.id === 'users' || role.key === 'fellowship_leader'} checked={role.permissions.includes(tab.id)} onChange={event => setRole(current => ({ ...current, permissions: event.target.checked ? [...current.permissions, tab.id] : current.permissions.filter(permission => permission !== tab.id) }))} /><span><span className="block text-sm font-semibold text-gray-900">{tab.label}</span><span className="text-xs text-gray-600">{tab.description}</span></span>
             </label>)}</div></fieldset>

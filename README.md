@@ -164,13 +164,13 @@ The attendance records are stored in MongoDB with the following structure:
 
 MIT
 
-## Fellowship leaders, cells and BSCT groups
+## Fellowship leaders and member care
 
 Apply the Supabase migrations in order, including
 `supabase/migrations/202610180001_fellowship_structure.sql` and
 `supabase/migrations/202610180002_role_account_management.sql`, before deploying this
 workspace. The server needs `SUPABASE_SERVICE_ROLE_KEY` for roster writes and
-structure management. The migration removes direct roster writes from public
+member management. The migration removes direct roster writes from public
 Supabase clients; public attendance continues through the server API.
 
 The environment login named by `ADMIN_USERNAME` is the base administrator. Sign
@@ -199,11 +199,13 @@ role key is required for staff authentication. Username changes and
 password resets revoke existing managed sessions.
 
 Fellowship leaders land on **Member Roster**, scoped to their assigned fellowship.
-They can edit personal details, add/import/remove brethren, create numbered
-cells, and create numbered BSCT groups within each cell. Assigning a leader also
-assigns their membership and designation. Editing a member's cell or fellowship
-clears any incompatible BSCT membership or leader assignment. Unassigned
-brethren remain visible in the breakdown. Public Mark Attendance remains open.
+They can edit personal details, add/import/archive brethren, and open the
+**Care Centre** to review fellowship care suggestions and manage their own
+follow-ups. Care endpoints derive the fellowship from the verified session;
+leaders cannot view another fellowship or assign tasks to another account.
+Cell/BSCT setup, assignment controls and roster columns have been removed.
+Existing structure/history is retained, and existing designations are preserved
+when editing personal details. Public Mark Attendance remains open.
 
 Validation: `node --import tsx --test tests/**/*.test.ts`, `npm run lint`, and
 `npx tsc --noEmit --incremental false`. The transactional PostgreSQL checks in
@@ -249,8 +251,8 @@ Fellowship leaders also see **Upcoming birthdays** above the member roster on
 their homepage and above their profile settings:
 today and the next 60 days, ordered soonest first. The server uses the verified
 account's fellowship and active members only, ignores caller-supplied fellowship
-filters, and returns only member names and birthday timing. This list works
-independently of email delivery configuration.
+filters, and returns names, birthday timing and saved phone numbers for call
+actions. This list works independently of SMS delivery configuration.
 
 The fellowship leader sidebar includes **Birthdays** (the full active fellowship
 list, with name search, month filters and missing birthday details) and
@@ -311,8 +313,8 @@ Projection SQL checks and concurrency tests run only against a disposable databa
 Staff can sign in with their saved email or username and the same password.
 Emails are normalized and unique across managed and configured accounts.
 **Users & Roles → Edit account** remains available for administrators. An email
-is optional when creating any account, including fellowship leaders. Accounts
-join birthday reminders automatically once an email is saved. Managed email,
+is optional when creating any account, including fellowship leaders. SMS reminders
+use saved account phone numbers and the profile reminder preference. Managed email,
 username and password changes revoke other sessions while keeping the device
 saving its profile signed in.
 
@@ -320,17 +322,45 @@ Apply `supabase/migrations/20261018163411_preserve_profile_followup_ownership.sq
 to preserve follow-up assignments atomically when a managed or configured account
 changes username. Historical audit entries keep the names recorded at the time.
 
-The daily cron runs at **08:00 Africa/Accra**, seven days and one day before
-birthdays. Active fellowship leaders receive reminders for their own fellowship;
-active administrators, including the base administrator, receive reminders for
-all fellowships. Disabled accounts, accounts without an email, and retired
-configured logins are excluded. `BIRTHDAY_REMINDER_TO` can optionally specify an
-additional central recipient. Every recipient gets a separate message, with
-delivery history and provider idempotency keys preventing duplicate sends.
+## SMS birthday reminders and Google Drive photos
 
-Production needs `RESEND_API_KEY`, a verified sender in `BIRTHDAY_REMINDER_FROM`
-(for example, `ARC Attendance <birthdays@your-verified-domain>`), `CRON_SECRET`,
-and `SUPABASE_SERVICE_ROLE_KEY`. Store keys only in Vercel's server environment.
-My profile and Users & Roles show whether email delivery is configured. Sending stays unavailable until the provider and verified sender are
-configured; no reminders are sent during tests.
+Apply `supabase/migrations/20261020023921_staff_photos_sms_and_integrations.sql`
+before deploying these features. New integration credentials, photo links and SMS
+claims use private tables with RLS and service-role-only access. Staff phone
+numbers are optional and normalized to international format in **My profile**.
 
+Birthday email sending has been replaced with **SMSOnlineGH**. The daily cron
+runs at **08:00 Africa/Accra**, seven days and one day before birthdays. Active
+fellowship leaders receive their fellowship's reminders; active administrators
+receive reminders across all fellowships. Accounts need a saved phone number and
+an enabled birthday SMS preference. Normalized duplicate recipients receive one
+message per birthday/timing. Persisted claims prevent concurrent duplicate sends;
+provider acceptance is recorded separately from handset delivery. Ambiguous
+network outcomes are retained as `uncertain` for review rather than resent.
+
+The base administrator opens **Users & Roles → SMS & Google Drive setup**, saves
+the SMSOnlineGH API key and approved sender, and saves Google web OAuth client
+credentials. The API key and OAuth secrets are encrypted at rest with AES-GCM
+using a key derived from `ADMIN_SESSION_SECRET`; keep that secret stable or
+re-enter integration credentials when rotating it. Environment settings
+`SMSONLINEGH_API_KEY`/`SMSONLINEGH_SENDER` and `GOOGLE_DRIVE_CLIENT_ID`,
+`GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and
+`GOOGLE_DRIVE_PHOTO_FOLDER_ID` are optional alternatives. Secrets are never returned
+to the browser. `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` remain required.
+
+Enable the Google Drive API in the Google Cloud project, create a **Web application**
+OAuth client and register the redirect URI displayed in setup. Select
+**Connect Google Drive** and authorize the Google account that will own the photos.
+The app requests `drive.file` access and creates a private **ARC Attendance Photos**
+folder. Photos never require public sharing. This connection is for the deployed
+website and is separate from any Google Drive connection in Codex.
+
+All staff profiles and existing-member editors contain a picture upload section.
+JPG, PNG and WebP files are limited to 2 MB and checked by file signature.
+The signed-in account or permitted fellowship is checked on uploads and every
+image read; Drive file IDs and credentials are not exposed by public roster reads.
+Configured-account picture identity survives profile conversion and renaming.
+Replacing a photo retains the previous file in Drive rather than deleting it.
+
+Tests use simulated SMS/Google responses and disposable local database records;
+no real messages or personal photos are sent during verification.

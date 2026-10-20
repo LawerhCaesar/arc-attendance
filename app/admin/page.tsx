@@ -43,11 +43,12 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
 // grant access to church-wide birthday or raw attendance endpoints.
 function visibleTabs(role: string, permissions: string[]) {
   return tabs.filter(tab => {
+    if (tab.id === 'care' && role === 'fellowship_leader') return permissions.includes('members');
     if (tab.id === 'fellowship-birthdays') return role === 'fellowship_leader' && permissions.includes('members');
     if (tab.id === 'fellowship-attendance') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('fellowship-services');
     if (tab.id === 'sunday-projections') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('overview') || permissions.includes('fellowship-services');
     return permissions.includes(tab.id);
-  });
+  }).map(tab => tab.id === 'care' && role === 'fellowship_leader' ? { ...tab, label: 'Care Centre' } : tab);
 }
 
 export default function AdminDashboard() {
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
           return;
         }
         setPermissions(session.permissions);
-        setActiveTab(previous => visible.some(tab => tab.id === previous) ? previous : visible[0].id);
+        setActiveTab(previous => visible.some(tab => tab.id === previous) ? previous : session.role === 'fellowship_leader' && visible.some(tab => tab.id === 'members') ? 'members' : visible[0].id);
         setSessionRole(session.role);
         setSessionUsername(session.username || '');
         setFellowshipScope(session.role === 'fellowship_leader' ? session.fellowship : undefined);
@@ -112,7 +113,7 @@ export default function AdminDashboard() {
         {activeTab === 'overview' && (
           <PastorDashboard onNavigate={destination => { if (permissions.includes(destination)) setActiveTab(destination); }} allowedDestinations={permissions} />
         )}
-        {activeTab === 'care' && <PastoralWeekly assignedOnly />}
+        {activeTab === 'care' && <PastoralWeekly assignedOnly={sessionRole !== 'fellowship_leader'} fellowshipCare={sessionRole === 'fellowship_leader'} canEditMembers={permissions.includes('members')} onMemberSaved={() => setRosterVersion(value => value + 1)} />}
         {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-birthdays' && <FellowshipBirthdays key={fellowshipScope} />}
         {activeTab === 'fellowship-attendance' && <FellowshipAttendanceHistory key={fellowshipScope} canChooseFellowship={sessionRole !== 'fellowship_leader'} />}
         {activeTab === 'sunday-projections' && <SundayAttendanceProjections key={`${sessionRole}-${fellowshipScope || 'all'}`} />}
@@ -178,7 +179,7 @@ export default function AdminDashboard() {
             )}
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Member Roster</h2>
-              <p className="text-gray-500 text-sm mt-1">Manage brethren and organize fellowships into cells and BSCT groups</p>
+              <p className="text-gray-500 text-sm mt-1">Manage brethren and keep fellowship details up to date</p>
             </div>
             <MemberRoster key={`${sessionRole}-${fellowshipScope || 'all'}`} fellowshipScope={fellowshipScope} canReviewDuplicates={sessionRole === 'admin'} onRosterChanged={() => setRosterVersion(value => value + 1)} />
           </div>

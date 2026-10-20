@@ -10,6 +10,7 @@ import { fetchAllRows } from '@/lib/pagination';
 import { isSuperAdmin } from '@/lib/super-admin';
 import { validateAccountEmail } from '@/lib/account-email';
 import { configuredUsersWithEmail } from '@/lib/account-profile';
+import { smsSettings } from '@/lib/integration-settings';
 
 export const dynamic = 'force-dynamic';
 const accountFields = 'id, username, email, display_name, role_id, fellowship, member_id, configured_username, is_active, created_at, updated_at';
@@ -39,11 +40,12 @@ export async function GET() {
         .eq('is_active', true).eq('designation', 'Fellowship Leader').order('fellowship').order('name').order('id').range(from, to)) : [],
       configuredUsersWithEmail(admin),
     ]);
+    const sms = await smsSettings();
     const overridden = new Set(accounts.map(account => account.configured_username));
     return NextResponse.json({ accounts: accounts.map(account => ({ ...account, isBaseAdmin: isSuperAdmin({
       username: account.username, accountId: account.id, configuredUsername: account.configured_username || undefined,
       role: roles.find(role => role.id === account.role_id)?.key || '',
-    }) })), roles, fellowshipLeaders, birthdayEmailReady: Boolean(process.env.RESEND_API_KEY && process.env.BIRTHDAY_REMINDER_FROM),
+    }) })), roles, fellowshipLeaders, birthdaySmsReady: Boolean(sms.apiKey && sms.sender),
       canManageFellowshipLeaders: isSuperAdmin(context), canEditSystemRoles: isSuperAdmin(context), canManageConfiguredAccounts: isSuperAdmin(context),
       currentAccountId: context?.accountId || null,
       configuredAccounts: configured.filter(user => !overridden.has(user.username.toLowerCase()))

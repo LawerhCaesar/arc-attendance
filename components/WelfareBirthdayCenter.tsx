@@ -59,8 +59,8 @@ export default function WelfareBirthdayCenter() {
         {[
           { label: 'Next 7 days', value: people.filter(person => person.daysUntil <= 7).length, color: 'text-rose-700' },
           { label: 'Next 30 days', value: people.filter(person => person.daysUntil <= 30).length, color: 'text-pink-700' },
-          { label: '7-day emails today', value: sevenDayReminders, color: 'text-violet-700' },
-          { label: '1-day emails today', value: oneDayReminders, color: 'text-amber-700' },
+          { label: 'Birthdays in 7 days', value: sevenDayReminders, color: 'text-violet-700' },
+          { label: 'Birthdays tomorrow', value: oneDayReminders, color: 'text-amber-700' },
         ].map(stat => (
           <div key={stat.label} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{stat.label}</p>
@@ -72,7 +72,7 @@ export default function WelfareBirthdayCenter() {
       <section className="rounded-2xl border border-rose-100 bg-rose-50 p-5">
         <h2 className="font-bold text-rose-950">Automatic welfare reminders</h2>
         <p className="mt-1 text-sm leading-6 text-rose-800">
-          A daily check sends one email to <strong>lakumbie@gmail.com</strong> seven days before each birthday and another one day before. Delivery history prevents duplicates.
+          A daily check sends birthday SMS reminders to fellowship leaders and administrators who have saved a phone number and enabled reminders in My profile. Reminders are sent seven days and one day before each birthday. SMSOnlineGH setup is managed by the base administrator in Users &amp; Roles.
         </p>
       </section>
 

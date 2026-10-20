@@ -11,7 +11,7 @@ interface Queue { tasks: CareTask[]; owners: { username: string; label: string }
 const input = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900';
 const button = 'rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50';
 
-export default function PastoralWeekly({ assignedOnly = false, canEditMembers = false, onMemberSaved }: { assignedOnly?: boolean; canEditMembers?: boolean; onMemberSaved?: () => void }) {
+export default function PastoralWeekly({ assignedOnly = false, fellowshipCare = false, canEditMembers = false, onMemberSaved }: { assignedOnly?: boolean; fellowshipCare?: boolean; canEditMembers?: boolean; onMemberSaved?: () => void }) {
   const [briefExpanded, setBriefExpanded] = useState(true);
   const briefContentId = useId();
   const [insights, setInsights] = useState<PastoralInsights | null>(null);
@@ -94,7 +94,7 @@ export default function PastoralWeekly({ assignedOnly = false, canEditMembers = 
       (['open', 'in_progress'].includes(task.status) || task.updated_at.slice(0, 10) >= (person.category === 'birthday' ? today : insights!.latestDate || today))));
   return <section className="space-y-5 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 text-gray-900 sm:p-6">
     <div className="flex items-start justify-between gap-3">
-      <div><h2 className="text-xl font-bold text-gray-950">{assignedOnly ? 'My follow-ups' : <button type="button" aria-expanded={briefExpanded} aria-controls={briefContentId} onClick={() => setBriefExpanded(value => !value)} className="flex items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"><span aria-hidden="true" className="text-base">{briefExpanded ? '▼' : '▶'}</span>Pastor’s weekly brief</button>}</h2>
+      <div><h2 className="text-xl font-bold text-gray-950">{assignedOnly ? 'My follow-ups' : <button type="button" aria-expanded={briefExpanded} aria-controls={briefContentId} onClick={() => setBriefExpanded(value => !value)} className="flex items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"><span aria-hidden="true" className="text-base">{briefExpanded ? '▼' : '▶'}</span>{fellowshipCare ? 'Fellowship Care Centre' : 'Pastor’s weekly brief'}</button>}</h2>
         {!assignedOnly && <p className="mt-1 text-sm text-gray-600">Latest recorded service: {insights?.latestDate || 'Not available'} · Care priorities as of {insights?.asOf || today}. Independent of the period filter below.</p>}</div>
       <button type="button" onClick={load} disabled={loading || busy} className={button}>{loading ? 'Refreshing…' : 'Refresh brief'}</button>
     </div>

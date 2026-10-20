@@ -6,16 +6,20 @@ import { validateAccountEmail } from './account-email';
 import { validateUsername } from './access-management';
 import { DEFAULT_PERMISSIONS, validateNewPassword } from './permissions';
 import { isSuperAdmin } from './super-admin';
+import { validateAccountPhone } from './account-phone';
 
 export class ProfileConflictError extends Error {}
-export interface ProfileChanges { email?: unknown; username?: unknown; newPassword?: unknown; confirmNewPassword?: unknown }
+export interface ProfileChanges { email?: unknown; username?: unknown; phone?: unknown; birthdaySmsEnabled?: unknown; newPassword?: unknown; confirmNewPassword?: unknown }
 
 export function validateProfileChanges(changes: ProfileChanges) {
   if (changes.newPassword !== undefined && typeof changes.newPassword !== 'string') throw new Error('Enter a valid new password.');
   const newPassword = changes.newPassword ? validateNewPassword(changes.newPassword) : undefined;
   if (newPassword && changes.confirmNewPassword !== newPassword) throw new Error('The new passwords do not match.');
+  if (changes.birthdaySmsEnabled !== undefined && typeof changes.birthdaySmsEnabled !== 'boolean') throw new Error('Choose a valid birthday SMS preference.');
   return { username: changes.username === undefined ? undefined : validateUsername(changes.username),
-    email: changes.email === undefined ? undefined : validateAccountEmail(changes.email), newPassword };
+    email: changes.email === undefined ? undefined : validateAccountEmail(changes.email), newPassword,
+    ...(changes.phone !== undefined ? { phone: validateAccountPhone(changes.phone) } : {}),
+    ...(changes.birthdaySmsEnabled !== undefined ? { birthday_sms_enabled: changes.birthdaySmsEnabled } : {}) };
 }
 
 /** Saved profile settings override optional environment email aliases. */
@@ -30,13 +34,13 @@ export async function configuredUsersWithEmail(admin: SupabaseClient) {
 
 export async function ownAccountProfile(admin: SupabaseClient, context: AuthContext) {
   if (context.accountId) {
-    const { data, error } = await admin.from('staff_accounts').select('display_name,email').eq('id', context.accountId).single();
+    const { data, error } = await admin.from('staff_accounts').select('display_name,email,phone,birthday_sms_enabled').eq('id', context.accountId).single();
     if (error) throw error;
-    return { displayName: data.display_name as string, email: data.email as string | null };
+    return { displayName: data.display_name as string, email: data.email as string | null, phone: data.phone as string | null, birthdaySmsEnabled: data.birthday_sms_enabled !== false };
   }
   const user = (await configuredUsersWithEmail(admin)).find(item => item.username === context.username);
   if (!user) throw new Error('Account no longer exists.');
-  return { displayName: user.username, email: user.email || null };
+  return { displayName: user.username, email: user.email || null, phone: null, birthdaySmsEnabled: true };
 }
 
 /** Target identity comes only from the signed-in session, never request data. */
@@ -88,7 +92,9 @@ export async function saveOwnAccountProfile(admin: SupabaseClient, context: Auth
   }
   let account: { id: string; username: string; email: string | null; session_version: number; configured_username: string | null };
   if (context.accountId) {
-    const record = { username, email, ...(fields.newPassword ? { password_hash: await hashPassword(fields.newPassword) } : {}) };
+    const record = { username, email, ...('phone' in fields ? { phone: fields.phone } : {}),
+      ...('birthday_sms_enabled' in fields ? { birthday_sms_enabled: fields.birthday_sms_enabled } : {}),
+      ...(fields.newPassword ? { password_hash: await hashPassword(fields.newPassword) } : {}) };
     const result = await admin.from('staff_accounts').update(record).eq('id', context.accountId)
       .eq('session_version', context.sessionVersion).eq('is_active', true)
       .select('id,username,email,session_version,configured_username').maybeSingle();
@@ -103,6 +109,7 @@ export async function saveOwnAccountProfile(admin: SupabaseClient, context: Auth
     const result = await admin.from('staff_accounts').insert({
       username, email, display_name: ownConfigured.username, role_id: role.data.id, fellowship: context.fellowship || null,
       is_active: true, configured_username: ownConfigured.username.toLowerCase(),
+      phone: fields.phone || null, birthday_sms_enabled: fields.birthday_sms_enabled ?? true,
       password_hash: !fields.newPassword && /^\$2[aby]\$/.test(password) ? password : await hashPassword(password),
     }).select('id,username,email,session_version,configured_username').single();
     if (result.error) throw result.error;

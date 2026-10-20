@@ -1,117 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dateInAccra } from '@/lib/birthdays';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { configuredUsersWithEmail } from '@/lib/account-profile';
-import { birthdayLeaderContacts, birthdayReminderJobs, type ReminderAccount } from '@/lib/birthday-reminders';
+import { birthdaySmsContacts, birthdaySmsJobs, sendBirthdaySms, SmsRejectedError, type SmsAccount } from '@/lib/birthday-sms';
+import { smsSettings } from '@/lib/integration-settings';
 import { fetchAllRows } from '@/lib/pagination';
-
-const escapeHtml = (value: string) => value
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#039;');
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const admin = getSupabaseAdmin();
-  const resendKey = process.env.RESEND_API_KEY;
-  const from = process.env.BIRTHDAY_REMINDER_FROM;
-  const centralRecipient = process.env.BIRTHDAY_REMINDER_TO;
-  if (!admin || !resendKey || !from) {
-    return NextResponse.json(
-      { error: 'SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, and BIRTHDAY_REMINDER_FROM are required' },
-      { status: 503 }
-    );
-  }
-
+  if (!process.env.CRON_SECRET || request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const [members, accounts, roles, configured] = await Promise.all([
-      fetchAllRows<{ id: string; name: string; fellowship: string; birthday: string }>((from, to) => admin
-        .from('members').select('id, name, fellowship, birthday').eq('is_active', true).order('id').range(from, to)),
-      fetchAllRows<ReminderAccount>((from, to) => admin.from('staff_accounts')
-        .select('email, fellowship, role_id, is_active, configured_username').order('id').range(from, to)),
-      admin.from('staff_roles').select('id,key').in('key', ['fellowship_leader', 'admin']),
-      configuredUsersWithEmail(admin),
+    const admin = getSupabaseAdmin();
+    const sms = await smsSettings();
+    if (!admin || !sms.apiKey || !sms.sender) return NextResponse.json({ error: 'Complete SMSOnlineGH setup in Users & Roles. Birthday email sending has been replaced by SMS.' }, { status: 503 });
+    const [members, accounts, roles] = await Promise.all([
+      fetchAllRows<{ id: string; name: string; fellowship: string; birthday: string }>((from,to) => admin.from('members').select('id,name,fellowship,birthday').eq('is_active',true).order('id').range(from,to)),
+      fetchAllRows<SmsAccount>((from,to) => admin.from('staff_accounts').select('phone,fellowship,role_id,is_active,birthday_sms_enabled').order('id').range(from,to)),
+      admin.from('staff_roles').select('id,key').in('key',['fellowship_leader','admin']),
     ]);
     if (roles.error) throw roles.error;
-    const contacts = birthdayLeaderContacts(accounts, roles.data.find(role => role.key === 'fellowship_leader')?.id || null,
-      configured, roles.data.find(role => role.key === 'admin')?.id || null);
-    const jobs = birthdayReminderJobs(members, contacts, dateInAccra(), centralRecipient);
-    let sent = 0;
-    let skipped = 0;
-    const errors: string[] = [];
-
-    for (const { member, recipient, occurrence, notificationType, idempotencyKey } of jobs) {
-      const personKey = member.id;
-      const { data: existing, error: deliveryCheckError } = await admin
-        .from('notification_deliveries')
-        .select('id')
-        .eq('notification_type', notificationType)
-        .eq('person_key', personKey)
-        .eq('recipient', recipient)
-        .eq('scheduled_for', occurrence.nextDate)
-        .eq('status', 'sent')
-        .maybeSingle();
-
-      if (deliveryCheckError) {
-        errors.push('Could not check reminder delivery history');
-        continue;
-      }
-      if (existing) {
-        skipped += 1;
-        continue;
-      }
-
-      const timing = occurrence.daysUntil === 1 ? 'tomorrow' : 'in 7 days';
-      const subject = `Birthday reminder: ${member.name} (${timing})`;
-      try {
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${resendKey}`,
-            'Content-Type': 'application/json',
-            'User-Agent': 'ARC-Attendance/1.0',
-            'Idempotency-Key': idempotencyKey,
-          },
-          signal: AbortSignal.timeout(10000),
-          body: JSON.stringify({
-            from,
-            to: [recipient],
-            subject,
-            html: `<h2>Upcoming birthday</h2><p><strong>${escapeHtml(member.name)}</strong> celebrates a birthday ${timing}, on ${escapeHtml(occurrence.display)}.</p><p>Fellowship: ${escapeHtml(member.fellowship || 'Unassigned')}</p>`,
-            text: `${member.name} celebrates a birthday ${timing}, on ${occurrence.display}. Fellowship: ${member.fellowship || 'Unassigned'}.`,
-          }),
-        });
-
-        if (!response.ok) {
-          errors.push(`Email provider returned ${response.status}`);
+    const contacts = birthdaySmsContacts(accounts, roles.data.find(role => role.key === 'fellowship_leader')?.id || null, roles.data.find(role => role.key === 'admin')?.id || null);
+    const jobs = birthdaySmsJobs(members,contacts,dateInAccra());
+    let accepted=0, skipped=0; const errors: string[]=[];
+    for (const job of jobs) {
+      // A persisted unique claim prevents overlapping runs and uncertain retries from sending twice.
+      const claim = await admin.from('birthday_sms_deliveries').insert({ idempotency_key:job.key, member_id:job.member.id, recipient:job.recipient,
+        scheduled_for:job.scheduledFor, notification_type:job.notificationType, status:'sending' });
+      if (claim.error?.code === '23505') {
+        const existing = await admin.from('birthday_sms_deliveries').select('status').eq('idempotency_key',job.key).single();
+        if (existing.error) { errors.push('Could not check SMS history.'); continue; }
+        if (existing.data.status !== 'failed') {
+          skipped++; if (existing.data.status === 'uncertain' || existing.data.status === 'sending') errors.push('An SMS acceptance needs review before retrying.');
           continue;
         }
-        const result = await response.json() as { id?: string };
-        const { error: deliveryError } = await admin.from('notification_deliveries').upsert({
-          notification_type: notificationType,
-          person_key: personKey,
-          recipient,
-          scheduled_for: occurrence.nextDate,
-          provider_message_id: result.id || null,
-          status: 'sent',
-        }, { onConflict: 'notification_type,person_key,recipient,scheduled_for' });
-        if (deliveryError) {
-          errors.push('Email sent but delivery history could not be saved');
-        }
-        sent += 1;
-      } catch {
-        errors.push('Email delivery could not be completed. Retry this run.');
+        const retry = await admin.from('birthday_sms_deliveries').update({status:'sending',error_code:null,updated_at:new Date().toISOString()}).eq('idempotency_key',job.key).eq('status','failed').select('idempotency_key').maybeSingle();
+        if (retry.error) { errors.push('Could not claim SMS retry.'); continue; }
+        if (!retry.data) { skipped++; continue; }
+      } else if (claim.error) { errors.push('Could not record SMS claim.'); continue; }
+      let messageId: string;
+      try { messageId = await sendBirthdaySms(job.recipient,job.text,sms); }
+      catch (error) {
+        const status = error instanceof SmsRejectedError ? 'failed' : 'uncertain';
+        const saved = await admin.from('birthday_sms_deliveries').update({status,error_code:status === 'failed'?'provider_rejected':'acceptance_unknown',updated_at:new Date().toISOString()}).eq('idempotency_key',job.key);
+        errors.push(saved.error ? 'SMS state could not be saved; review before retrying.' : status === 'failed' ? 'SMS was rejected by the provider.' : 'SMS acceptance is uncertain; review before retrying.');
+        continue;
       }
+      const saved = await admin.from('birthday_sms_deliveries').update({status:'accepted',provider_message_id:messageId,updated_at:new Date().toISOString()}).eq('idempotency_key',job.key);
+      accepted++; if (saved.error) errors.push('SMS accepted but confirmation could not be saved; review before retrying.');
     }
-
-    return NextResponse.json({ success: errors.length === 0, sent, skipped, errors }, { status: errors.length ? 502 : 200 });
-  } catch {
-    return NextResponse.json({ error: 'Could not load birthday reminders and leader recipients.' }, { status: 503 });
-  }
+    return NextResponse.json({success:!errors.length,channel:'sms',accepted,skipped,errors}, {status:errors.length?502:200});
+  } catch { return NextResponse.json({error:'Could not load birthday SMS reminders and recipients.'},{status:503}); }
 }
