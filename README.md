@@ -210,6 +210,15 @@ Validation: `node --import tsx --test tests/**/*.test.ts`, `npm run lint`, and
 `tests/fellowship-structure.sql` run against a disposable database after applying
 the migrations and roll back their fixtures.
 
+## Member duplicate review
+
+Member duplicate review requires an exact normalized phone-number match. Ghana
+local, nine-digit and `+233`/`00233` formats use the same identifier; international
+country codes remain distinct. Names, fellowship, birthdays and other shared
+details do not independently flag duplicates. Missing or malformed phone numbers
+are excluded. Shared-phone records still require an explicit review and merge
+decision, and saved keep-separate decisions remain in effect.
+
 ## Account emails and fellowship birthday reminders
 
 Apply the account email migration and

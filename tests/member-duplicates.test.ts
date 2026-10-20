@@ -1,169 +1,116 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  contactSimilarity,
   duplicateCandidateForPair,
   findMemberDuplicateCandidates,
   groupMemberDuplicateCandidates,
-  nameSimilarity,
+  normalizeDuplicatePhone,
 } from '../lib/member-duplicates';
 
-const member = (id: string, name: string, phone: string, fellowship: string) => ({ id, name, phone, fellowship });
+const member = (id: string, name = 'Esi Owusu', phone = '0503700378', fellowship = 'Pleroma') => ({ id, name, phone, fellowship });
 
-test('matches reordered names and Ghana phone formats', () => {
-  const candidate = duplicateCandidateForPair(
-    member('1', 'Ama Serwaa Mensah', '024 123 4567', 'Shalach'),
-    member('2', 'Mensah Ama Serwaa', '+233 24 123 4567', 'Grace'),
-  );
-  assert.ok(candidate);
-  assert.equal(candidate?.confidence, 'high');
-  assert.ok(candidate?.reasons.includes('Contact numbers match'));
-});
-
-test('flags a minor name variation in the same fellowship', () => {
-  const candidate = duplicateCandidateForPair(
-    member('1', 'Kwame Boateng', '', 'Pleroma'),
-    member('2', 'Kwame Boatengh', '', 'Pleroma'),
-  );
-  assert.ok(candidate);
-  assert.ok((candidate?.score || 0) >= 80);
-});
-
-test('flags a shared name without supporting contact or fellowship evidence', () => {
-  const candidate = duplicateCandidateForPair(
-    member('1', 'John Mensah', '0240000000', 'Pleroma'),
-    member('2', 'Jon Mensah', '0559999999', 'Shalach'),
-  );
-  assert.ok(candidate);
-  assert.ok(candidate.reasons.includes('Shared name: mensah'));
-  assert.notEqual(candidate.confidence, 'high');
-});
-
-test('flags one name anywhere in a longer full name for review', () => {
-  for (const name of ['nana', 'mekhi', 'osei', 'owusu']) {
-    const candidate = duplicateCandidateForPair(
-      member('1', 'Nana Mekhi Osei Owusu', '', ''),
-      member('2', name, '', ''),
-    );
-    assert.ok(candidate, name);
-    assert.equal(candidate.confidence, 'low');
-    assert.ok(candidate.reasons.includes(`Shared name: ${name}`));
+test('Ghana phone formats share one duplicate identifier', () => {
+  for (const phone of ['0503700378', '503700378', '+233503700378', '233503700378',
+    '00233503700378', '+233 (0) 50 370 0378', '2330503700378', '00233 (0) 50 370 0378',
+    '(050) 370-0378', '050.370.0378', "'0503700378"]) {
+    assert.equal(normalizeDuplicatePhone(phone), '233503700378', phone);
   }
+  assert.equal(normalizeDuplicatePhone('0233123456'), '233233123456');
+  assert.equal(normalizeDuplicatePhone('233123456'), '233233123456');
+  assert.equal(normalizeDuplicatePhone('0302123456'), '233302123456');
 });
 
-test('normalizes shared name tokens and accepts short names', () => {
+test('exact normalized phone matches are reviewed even when all other details differ', () => {
   const candidate = duplicateCandidateForPair(
-    member('1', 'Li, André-Mensah', '', ''),
-    member('2', 'li andre', '', ''),
+    { ...member('a'), birthday: '01-01', location: 'Accra', designation: 'Member' },
+    { ...member('b', 'Kwame Boateng', '+233503700378', 'Shalach'), birthday: '06-12', location: 'Tema', designation: 'Cell Leader' },
   );
   assert.ok(candidate);
-  assert.ok(candidate.reasons.includes('Shared name: li, andre'));
+  assert.deepEqual(candidate.reasons, ['Phone numbers match']);
+  assert.equal(candidate.score, 100);
 });
 
-test('flags similar full names even without any other recorded details', () => {
-  const candidate = duplicateCandidateForPair(
-    member('1', 'Akosua', '', ''),
-    member('2', 'Akoswa', '', ''),
-  );
-  assert.ok(candidate);
-  assert.equal(candidate.confidence, 'medium');
+test('matching names and other member details cannot override different phone numbers', () => {
+  const shared = { name: 'Nana Mekhi Osei Owusu', fellowship: 'Shalach', birthday: '06-12', location: 'Accra', designation: 'Member' };
+  assert.equal(duplicateCandidateForPair(
+    { ...shared, id: 'a', phone: '0503700378' },
+    { ...shared, id: 'b', phone: '0201234567' },
+  ), null);
+  assert.equal(duplicateCandidateForPair(member('a'), member('b', 'Mekhi', '0201234567')), null);
 });
 
-test('any one shared member detail can independently suggest review', () => {
-  const details = [
-    { field: 'phone', left: '024 123 4567', right: '+233 24 123 4567', reason: 'Contact numbers match' },
-    { field: 'fellowship', left: 'Shalach', right: ' SHALACH ', reason: 'Fellowships match' },
-    { field: 'designation', left: 'Cell Leader', right: 'cell leader', reason: 'Designations match' },
-    { field: 'birthday', left: '1990-01-14', right: '1990-01-14', reason: 'Birthdays match' },
-    { field: 'location', left: 'East-Legon', right: 'east legon', reason: 'Locations match' },
-  ];
-  for (const { field, left, right, reason } of details) {
-    const candidate = duplicateCandidateForPair(
-      { ...member('1', 'Esi', '', ''), [field]: left },
-      { ...member('2', 'Kwame', '', ''), [field]: right },
-    );
-    assert.ok(candidate, field);
-    assert.deepEqual(candidate.reasons, [reason]);
-    assert.notEqual(candidate.confidence, 'high');
-    assert.ok(candidate.score < 80);
+test('one changed phone digit is a different identifier', () => {
+  assert.equal(duplicateCandidateForPair(member('a'), member('b', 'Esi Owusu', '0503700379')), null);
+});
+
+test('missing, incomplete and malformed phones do not match, even on identical records', () => {
+  for (const phone of ['', ' ', 'N/A', '0000000000', '050370', '50370037', '050370037899',
+    '+23350370037899', 'phone 0503700378', '0503700378 / 0201234567', '0503700378 ext 2']) {
+    assert.equal(normalizeDuplicatePhone(phone), null, phone);
+    assert.equal(duplicateCandidateForPair(member('a', 'Esi', phone), member('b', 'Esi', phone)), null, phone);
   }
+  assert.equal(normalizeDuplicatePhone(null), null);
+  assert.equal(normalizeDuplicatePhone(undefined), null);
 });
 
-test('blank details and fragments inside different names are not overlaps', () => {
-  assert.equal(duplicateCandidateForPair(
-    { ...member('1', 'Ann', ' ', ' '), designation: ' ', birthday: ' ', location: '---' },
-    { ...member('2', 'Joanna', '', ''), designation: '', birthday: '', location: '' },
-  ), null);
-  assert.equal(duplicateCandidateForPair(
-    member('1', '', '', ''), member('2', '', '', ''),
-  ), null);
+test('international country codes are retained instead of comparing their last nine digits', () => {
+  assert.equal(normalizeDuplicatePhone('+44 503700378'), '44503700378');
+  assert.equal(normalizeDuplicatePhone('0044 503700378'), '44503700378');
+  assert.equal(normalizeDuplicatePhone('44503700378'), '44503700378');
+  assert.equal(duplicateCandidateForPair(member('a'), member('b', 'Esi', '+44 503700378')), null);
+  assert.equal(duplicateCandidateForPair(member('a', 'Esi', '+44 503700378'), member('b', 'Esi', '+33 503700378')), null);
 });
 
-test('strong corroborated matches rank above a single overlapping detail', () => {
-  const anchor = member('a', 'Esi Owusu', '0241234567', 'Pleroma');
+test('a member never matches itself', () => {
+  assert.equal(duplicateCandidateForPair(member('a'), member('a')), null);
+  assert.equal(findMemberDuplicateCandidates([member('a'), member('a')]).length, 0);
+});
+
+test('one shared phone groups records despite different names and fellowships', () => {
   const candidates = findMemberDuplicateCandidates([
-    anchor,
-    member('b', 'Kwame', '', 'Pleroma'),
-    member('c', 'Esi Owusu', '0241234567', 'Shalach'),
+    member('a'), member('b', 'Mekhi', '+233503700378', 'Shalach'), member('c', 'Ama', '503700378', 'Grace'),
   ]);
-  assert.equal(candidates[0].pairKey, 'a:c');
-  assert.equal(candidates[0].confidence, 'high');
-  assert.equal(candidates[1].confidence, 'low');
+  assert.equal(candidates.length, 2);
+  const groups = groupMemberDuplicateCandidates(candidates);
+  assert.equal(groups.length, 1);
+  assert.deepEqual(groups[0].memberIds, ['a', 'b', 'c']);
+  assert.equal(groups[0].matchCount, 2);
 });
 
-test('broader candidates still honor keep-separate decisions', () => {
-  const members = [member('a', 'Nana Mekhi Osei Owusu', '', ''), member('b', 'Mekhi', '', '')];
+test('keep-separate decisions suppress the reviewed phone match', () => {
+  const members = [member('a'), member('b')];
   assert.equal(findMemberDuplicateCandidates(members).length, 1);
   assert.equal(findMemberDuplicateCandidates(members, new Set(['a:b'])).length, 0);
 });
 
-test('groups supported only by one shared detail retain low confidence', () => {
+test('excluding an anchor pair does not hide an unreviewed match to another member', () => {
+  const candidates = findMemberDuplicateCandidates([member('a'), member('b'), member('c')], new Set(['a:c']));
+  assert.deepEqual(new Set(candidates.map(candidate => candidate.pairKey)), new Set(['a:b', 'b:c']));
+});
+
+test('a fully reviewed shared phone produces no new candidates', () => {
+  assert.equal(findMemberDuplicateCandidates([member('a'), member('b'), member('c')], new Set(['a:b', 'a:c', 'b:c'])).length, 0);
+});
+
+test('distinct phones form separate groups, while missing phones stay out of the count', () => {
   const groups = groupMemberDuplicateCandidates(findMemberDuplicateCandidates([
-    member('a', 'Esi', '', 'Pleroma'),
-    member('b', 'Kwame', '', 'Pleroma'),
+    member('a'), member('b'), member('c', 'Esi', '0201234567'), member('d', 'Ama', '+233201234567'), member('e', 'Esi', ''),
   ]));
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0].confidence, 'low');
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map(group => group.memberIds.join(':')).sort(), ['a:b', 'c:d']);
 });
 
-test('respects decisions to keep a pair separate', () => {
-  const members = [
-    member('a', 'Esi Owusu', '0240000000', 'Pleroma'),
-    member('b', 'Esi Owusu', '0240000000', 'Pleroma'),
-  ];
-  assert.equal(findMemberDuplicateCandidates(members).length, 1);
-  assert.equal(findMemberDuplicateCandidates(members, new Set(['a:b'])).length, 0);
-});
-
-test('collapses an exact duplicate group around one canonical record', () => {
-  const members = [
-    member('a', 'Esi Owusu', '', 'Pleroma'),
-    member('b', 'Esi Owusu', '', 'Pleroma'),
-    member('c', 'Esi Owusu', '', 'Pleroma'),
-    member('d', 'Esi Owusu', '', 'Pleroma'),
-  ];
-
+test('large repeated imports use a single review anchor rather than every possible pair', () => {
+  const members = Array.from({ length: 2000 }, (_, index) => member(String(index), `Member ${index}`));
   const candidates = findMemberDuplicateCandidates(members);
-  assert.equal(candidates.length, 3);
-  assert.ok(candidates.every(candidate => [candidate.memberA.id, candidate.memberB.id].includes('a')));
+  assert.equal(candidates.length, 1999);
+  assert.equal(groupMemberDuplicateCandidates(candidates).length, 1);
 });
 
-test('groups one canonical record with all of its possible matches', () => {
-  const members = [
-    member('a', 'Esi Owusu', '', 'Pleroma'),
-    member('b', 'Esi Owusu', '', 'Pleroma'),
-    member('c', 'Esi Owusu', '', 'Pleroma'),
-    member('d', 'Esi Owusu', '', 'Pleroma'),
-  ];
-
-  const groups = groupMemberDuplicateCandidates(findMemberDuplicateCandidates(members));
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0].anchor.id, 'a');
-  assert.equal(groups[0].matchCount, 3);
-  assert.deepEqual(groups[0].memberIds, ['a', 'b', 'c', 'd']);
-});
-
-test('uses similarity rather than raw formatting', () => {
-  assert.equal(contactSimilarity('020-111-2233', '+233 20 111 2233'), 1);
-  assert.equal(nameSimilarity('Adwoa  Frimpong', 'frimpong, adwoa'), 1);
+test('changing a phone invalidates a previously suggested duplicate pair', () => {
+  const original = member('a');
+  const changed = member('b');
+  assert.ok(duplicateCandidateForPair(original, changed));
+  changed.phone = '0201234567';
+  assert.equal(duplicateCandidateForPair(original, changed), null);
 });

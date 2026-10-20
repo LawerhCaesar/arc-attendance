@@ -29,61 +29,19 @@ export interface MemberDuplicateGroup {
   reasons: string[];
 }
 
-const normalizeText = (value?: string) => (value || '')
-  .normalize('NFKD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, ' ')
-  .trim()
-  .replace(/\s+/g, ' ');
-
-const normalizePhone = (value?: string) => {
-  const digits = (value || '').replace(/\D/g, '');
-  return digits.length >= 9 ? digits.slice(-9) : digits;
-};
-
-function levenshtein(left: string, right: string): number {
-  if (!left.length) return right.length;
-  if (!right.length) return left.length;
-  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= left.length; row += 1) {
-    const current = [row];
-    for (let column = 1; column <= right.length; column += 1) {
-      current[column] = Math.min(
-        current[column - 1] + 1,
-        previous[column] + 1,
-        previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1),
-      );
-    }
-    previous.splice(0, previous.length, ...current);
+/** Ghana local/country-code formats share a key; other country codes stay intact. */
+export function normalizeDuplicatePhone(value?: string | null): string | null {
+  const compact = (value || '').trim().replace(/^'/, '').replace(/[\s().-]/g, '');
+  if (!/^(?:\+|00)?\d+$/.test(compact)) return null;
+  const digits = compact.startsWith('+') ? compact.slice(1) : compact.startsWith('00') ? compact.slice(2) : compact;
+  // A leading + or 00 explicitly identifies an international number.
+  const international = compact.startsWith('+') || compact.startsWith('00');
+  if (!international) {
+    if (/^0[1-9]\d{8}$/.test(digits)) return `233${digits.slice(1)}`;
+    if (/^[1-9]\d{8}$/.test(digits)) return `233${digits}`;
   }
-  return previous[right.length];
-}
-
-function stringSimilarity(left: string, right: string): number {
-  if (!left || !right) return 0;
-  if (left === right) return 1;
-  return 1 - levenshtein(left, right) / Math.max(left.length, right.length);
-}
-
-export function nameSimilarity(left?: string, right?: string): number {
-  const a = normalizeText(left);
-  const b = normalizeText(right);
-  if (!a || !b) return 0;
-  if (Math.min(a.length, b.length) < 5) return a === b ? 1 : 0;
-  const ordered = stringSimilarity(a, b);
-  const tokenSorted = stringSimilarity(
-    a.split(' ').sort().join(' '),
-    b.split(' ').sort().join(' '),
-  );
-  return Math.max(ordered, tokenSorted);
-}
-
-export function contactSimilarity(left?: string, right?: string): number {
-  const a = normalizePhone(left);
-  const b = normalizePhone(right);
-  if (a.length < 7 || b.length < 7) return 0;
-  return stringSimilarity(a, b);
+  if (digits.startsWith('233')) return /^2330?[1-9]\d{8}$/.test(digits) ? `233${digits.slice(-9)}` : null;
+  return (international ? /^[1-9]\d{7,14}$/ : /^[1-9]\d{9,14}$/).test(digits) ? digits : null;
 }
 
 export function duplicatePairKey(leftId: string, rightId: string): string {
@@ -94,54 +52,16 @@ export function duplicateCandidateForPair(
   memberA: DuplicateMember,
   memberB: DuplicateMember,
 ): MemberDuplicateCandidate | null {
-  const nameScore = nameSimilarity(memberA.name, memberB.name);
-  const nameTokensA = new Set(normalizeText(memberA.name).split(' ').filter(Boolean));
-  const nameTokensB = new Set(normalizeText(memberB.name).split(' ').filter(Boolean));
-  const sharedNames = [...nameTokensA].filter(token => nameTokensB.has(token));
-
-  const phoneScore = contactSimilarity(memberA.phone, memberB.phone);
-  const fellowshipScore = stringSimilarity(normalizeText(memberA.fellowship), normalizeText(memberB.fellowship));
-  const similarName = nameScore >= 0.82;
-  const similarContact = phoneScore >= 0.88;
-  const similarFellowship = fellowshipScore >= 0.9;
-  const matchingDetails = (['designation', 'birthday', 'location'] as const).filter(field => {
-    const value = normalizeText(memberA[field]);
-    return Boolean(value && value === normalizeText(memberB[field]));
-  });
-  if (!similarName && !sharedNames.length && !similarContact && !similarFellowship && !matchingDetails.length) return null;
-
-  const reasons: string[] = [];
-  if (similarName) reasons.push(`Names are ${Math.round(nameScore * 100)}% similar`);
-  if (sharedNames.length) reasons.push(`Shared name: ${sharedNames.join(', ')}`);
-  if (similarContact) reasons.push(phoneScore === 1 ? 'Contact numbers match' : 'Contact numbers are similar');
-  if (similarFellowship) reasons.push('Fellowships match');
-  const detailReasons = { designation: 'Designations match', birthday: 'Birthdays match', location: 'Locations match' };
-  matchingDetails.forEach(field => reasons.push(detailReasons[field]));
-
-  // Keep corroborated matches at the top; a single overlapping detail only
-  // suggests a review and must not look like a confirmed identity match.
-  const corroborated = similarName && (similarContact || similarFellowship);
-  const score = corroborated
-    ? Math.round((nameScore * 0.6 + Math.max(phoneScore, fellowshipScore) * 0.4) * 100)
-    : Math.round(Math.max(
-      similarName ? nameScore * 0.6 : 0,
-      sharedNames.length ? 0.5 : 0,
-      similarContact ? phoneScore * 0.55 : 0,
-      similarFellowship ? fellowshipScore * 0.35 : 0,
-      matchingDetails.includes('birthday') ? 0.45 : 0,
-      matchingDetails.includes('location') ? 0.3 : 0,
-      matchingDetails.includes('designation') ? 0.2 : 0,
-    ) * 100);
-  const confidence = (nameScore >= 0.92 && (phoneScore === 1 || fellowshipScore === 1))
-    ? 'high' : similarName || similarContact ? 'medium' : 'low';
+  const phone = normalizeDuplicatePhone(memberA.phone);
+  if (memberA.id === memberB.id || !phone || phone !== normalizeDuplicatePhone(memberB.phone)) return null;
 
   return {
     pairKey: duplicatePairKey(memberA.id, memberB.id),
     memberA,
     memberB,
-    confidence,
-    score,
-    reasons,
+    confidence: 'high',
+    score: 100,
+    reasons: ['Phone numbers match'],
   };
 }
 
@@ -150,47 +70,33 @@ export function findMemberDuplicateCandidates(
   ignoredPairKeys: ReadonlySet<string> = new Set(),
 ): MemberDuplicateCandidate[] {
   const candidates: MemberDuplicateCandidate[] = [];
-  const exactGroups = new Map<string, DuplicateMember[]>();
+  const phoneGroups = new Map<string, DuplicateMember[]>();
+  const seenIds = new Set<string>();
 
   members.forEach(member => {
-    const signature = [
-      normalizeText(member.name),
-      normalizePhone(member.phone),
-      normalizeText(member.fellowship),
-      normalizeText(member.designation),
-      normalizeText(member.birthday),
-      normalizeText(member.location),
-    ].join('|');
-    const group = exactGroups.get(signature) || [];
+    const phone = normalizeDuplicatePhone(member.phone);
+    if (!phone || seenIds.has(member.id)) return;
+    seenIds.add(member.id);
+    const group = phoneGroups.get(phone) || [];
     group.push(member);
-    exactGroups.set(signature, group);
+    phoneGroups.set(phone, group);
   });
 
-  const representatives: DuplicateMember[] = [];
-  exactGroups.forEach(group => {
-    const representative = group[0];
-    representatives.push(representative);
-
-    // Large repeated imports are reviewed against one canonical record. This
-    // preserves every merge decision while avoiding n² identical pairings.
-    group.slice(1).forEach(duplicate => {
-      const pairKey = duplicatePairKey(representative.id, duplicate.id);
-      if (ignoredPairKeys.has(pairKey)) return;
-      const candidate = duplicateCandidateForPair(representative, duplicate);
-      if (candidate) candidates.push(candidate);
-    });
-  });
-
-  for (let left = 0; left < representatives.length; left += 1) {
-    for (let right = left + 1; right < representatives.length; right += 1) {
-      const memberA = representatives[left];
-      const memberB = representatives[right];
-      const pairKey = duplicatePairKey(memberA.id, memberB.id);
-      if (ignoredPairKeys.has(pairKey)) continue;
-      const candidate = duplicateCandidateForPair(memberA, memberB);
-      if (candidate) candidates.push(candidate);
+  phoneGroups.forEach(group => {
+    const covered = new Set<string>();
+    // One anchor covers a repeated phone number without quadratic pairings.
+    // An excluded record may need another anchor to retain unreviewed matches.
+    for (const anchor of group) {
+      if (covered.has(anchor.id)) continue;
+      for (const member of group) {
+        if (anchor.id === member.id || ignoredPairKeys.has(duplicatePairKey(anchor.id, member.id))) continue;
+        const candidate = duplicateCandidateForPair(anchor, member)!;
+        candidates.push(candidate);
+        covered.add(anchor.id);
+        covered.add(member.id);
+      }
     }
-  }
+  });
   return candidates.sort((a, b) => b.score - a.score || a.memberA.name.localeCompare(b.memberA.name));
 }
 

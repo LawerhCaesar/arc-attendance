@@ -115,7 +115,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <h3 className="font-bold text-amber-950">Possible duplicate members</h3>
             <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{totalGroups}</span>
           </div>
-          <p className="mt-1 text-xs leading-5 text-amber-800">One shared name or member detail can suggest a match. Review each record and select which ones to merge or keep separate. No record is merged automatically.</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">Records are matched by the same phone number, including Ghana local and +233 formats. Missing or invalid numbers are excluded. Review each record and select which ones to merge or keep separate. No record is merged automatically.</p>
         </div>
         <span className="shrink-0 text-sm font-semibold text-amber-900">{expanded ? 'Hide' : 'Review'}</span>
       </button>
@@ -131,8 +131,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <article key={group.groupKey} className="rounded-xl border border-gray-200 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${group.confidence === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>Strongest match: {group.confidence} confidence</span>
-                  <span className="text-xs font-semibold text-gray-500">Highest match score: {group.score}/100</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Same phone number</span>
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">{group.matchCount} possible match{group.matchCount === 1 ? '' : 'es'}</span>
                 </div>
                 <p className="text-xs text-gray-500">{group.reasons.slice(0, 3).join(' · ')}</p>
