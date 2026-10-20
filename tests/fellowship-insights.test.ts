@@ -27,11 +27,11 @@ test('service date wins over submission date; overlaps count once and present wi
   assert.equal(result.unlinkedRecords, 0);
 });
 
-test('archived brethren keep their history and zero-history members never receive inferred absences', () => {
+test('archived brethren are excluded from reports and zero-history members never receive inferred absences', () => {
   const result = report([member({ is_active: false }), member({ id: 'b', name: 'Kojo', phone: '' })], [row({ member_id: 'a' })]);
-  assert.equal(result.members[0].archived, true);
-  assert.equal(result.members[0].history.length, 1);
-  assert.deepEqual(result.members[1].history, []);
+  assert.deepEqual(result.members.map(member => member.id), ['b']);
+  assert.deepEqual(result.members[0].history, []);
+  assert.equal(result.unlinkedRecords,0);
 });
 
 test('other fellowships and merged members never enter the report; explicit IDs cannot be reassigned by matching phone', () => {

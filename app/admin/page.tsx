@@ -9,6 +9,7 @@ import MemberRoster from '@/components/MemberRoster';
 import UpcomingFellowshipBirthdays from '@/components/UpcomingFellowshipBirthdays';
 import FellowshipBirthdays from '@/components/FellowshipBirthdays';
 import FellowshipAttendanceHistory from '@/components/FellowshipAttendanceHistory';
+import SundayAttendanceProjections from '@/components/SundayAttendanceProjections';
 import RawDataTable from '@/components/RawDataTable';
 import DemographicsCharts from '@/components/DemographicsCharts';
 import FirstTimerWorkspace from '@/components/FirstTimerWorkspace';
@@ -35,6 +36,7 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'users',                label: 'Users & Roles',     icon: '🔐' },
   { id: 'fellowship-birthdays',  label: 'Birthdays',         icon: '🎂' },
   { id: 'fellowship-attendance', label: 'Fellowship Attendance History', icon: '📈' },
+  { id: 'sunday-projections', label: 'Sunday Projections', icon: '☑️' },
 ];
 
 // These scoped views belong to the fellowship roster permission. They do not
@@ -43,6 +45,7 @@ function visibleTabs(role: string, permissions: string[]) {
   return tabs.filter(tab => {
     if (tab.id === 'fellowship-birthdays') return role === 'fellowship_leader' && permissions.includes('members');
     if (tab.id === 'fellowship-attendance') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('fellowship-services');
+    if (tab.id === 'sunday-projections') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('overview') || permissions.includes('fellowship-services');
     return permissions.includes(tab.id);
   });
 }
@@ -112,6 +115,7 @@ export default function AdminDashboard() {
         {activeTab === 'care' && <PastoralWeekly assignedOnly />}
         {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-birthdays' && <FellowshipBirthdays key={fellowshipScope} />}
         {activeTab === 'fellowship-attendance' && <FellowshipAttendanceHistory key={fellowshipScope} canChooseFellowship={sessionRole !== 'fellowship_leader'} />}
+        {activeTab === 'sunday-projections' && <SundayAttendanceProjections key={`${sessionRole}-${fellowshipScope || 'all'}`} />}
 
         { activeTab === 'past-entry' && (
           <div>

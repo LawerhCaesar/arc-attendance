@@ -11,10 +11,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const designation = searchParams.get('designation') || undefined;
     const requestedFellowship = searchParams.get('fellowship') || undefined;
+    const status = searchParams.get('status') === 'all' ? 'all' : 'active';
+    if (status === 'all') await requireMemberAccess();
     const fellowship = memberFellowshipScope(context) || requestedFellowship;
 
-    const members = await getMembers(designation, fellowship);
-    return NextResponse.json(members);
+    const members = await getMembers(designation, fellowship, status);
+    return NextResponse.json(members, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return memberApiFailure(error); }
 }
 

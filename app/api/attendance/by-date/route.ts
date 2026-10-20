@@ -5,6 +5,7 @@ import { canAccess, ATTENDANCE_READ_PERMISSIONS } from '@/lib/permissions';
 import { fetchAllRows } from '@/lib/pagination';
 import { consolidateLinkedAttendance } from '@/lib/attendance-identity';
 import type { AttendanceRecord } from '@/lib/database';
+import { reportingAttendance } from '@/lib/database';
 
 /**
  * GET /api/attendance/by-date?date=YYYY-MM-DD
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   let data: AttendanceRecord[];
   try {
-    data = await fetchAllRows<AttendanceRecord>((from, to) => query.order('id').range(from, to));
+    data = await reportingAttendance(await fetchAllRows<AttendanceRecord>((from, to) => query.order('id').range(from, to)));
   } catch (error) {
     console.error('Error fetching attendance by date:', error);
     return NextResponse.json(

@@ -4,6 +4,7 @@ import { fetchAllRows } from './pagination';
 import { consolidateLinkedAttendance, matchesRosterMember, normalizePhone } from './attendance-identity';
 import { getSupabaseAdmin } from './supabase-admin';
 import { returningArchivedMember } from './returning-member';
+import { excludeArchivedAttendance, type ReportingMember } from './archived-attendance';
 
 export interface AttendanceRecord {
   id?: string;
@@ -124,7 +125,8 @@ export async function getAttendanceData(options: { preserveOverlaps?: boolean } 
     .order('date', { ascending: false })
     .order('createdAt', { ascending: false }).order('id').range(from, to));
 
-  return (options.preserveOverlaps ? data : consolidateLinkedAttendance(data)).map(record => ({
+  const visible = await reportingAttendance(data);
+  return (options.preserveOverlaps ? visible : consolidateLinkedAttendance(visible)).map(record => ({
     ...record,
     designation: record.designation || 'Member',
     createdAt: record.createdAt ? new Date(record.createdAt) : undefined,
@@ -147,11 +149,17 @@ export async function getAttendanceByDateRange(
 
   const data = await fetchAllRows<AttendanceRecord>((from, to) => query.range(from, to));
 
-  return consolidateLinkedAttendance(data).map(record => ({
+  return consolidateLinkedAttendance(await reportingAttendance(data)).map(record => ({
     ...record,
     designation: record.designation || 'Member',
     createdAt: record.createdAt ? new Date(record.createdAt) : undefined,
   } as AttendanceRecord));
+}
+
+export async function reportingAttendance<T extends Pick<AttendanceRecord, 'member_id' | 'name' | 'phone' | 'fellowship'>>(rows: T[]): Promise<T[]> {
+  const members = await fetchAllRows<ReportingMember>((from, to) => (getSupabaseAdmin() || supabase).from(MEMBERS_TABLE)
+    .select('id,name,phone,fellowship,is_active,merged_into_id').order('id').range(from, to));
+  return excludeArchivedAttendance(rows, members);
 }
 
 // ─── Members Roster ───────────────────────────────────────
@@ -159,14 +167,15 @@ export async function getAttendanceByDateRange(
 /** Get all active members, optionally filtered by designation and/or fellowship */
 export async function getMembers(
   designation?: string,
-  fellowship?: string
+  fellowship?: string,
+  status: 'active' | 'all' = 'active',
 ): Promise<Member[]> {
   let query = supabase
     .from(MEMBERS_TABLE)
     .select('*')
-    .eq('is_active', true)
     .order('fellowship')
     .order('name').order('id');
+  query = status === 'all' ? query.is('merged_into_id', null) : query.eq('is_active', true);
 
   if (designation) {
     if (designation.includes(',')) {

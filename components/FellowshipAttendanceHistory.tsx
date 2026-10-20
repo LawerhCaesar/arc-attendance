@@ -15,12 +15,11 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
   const [end, setEnd] = useState(dateInAccra);
   const [memberId, setMemberId] = useState('all');
   const [search, setSearch] = useState('');
-  const [includeArchived, setIncludeArchived] = useState(true);
   const invalidRange = Boolean(start && end && start > end);
   const visibleMembers = useMemo(() => (data?.members || []).filter(member =>
-    (includeArchived || !member.archived) && (memberId === 'all' || member.id === memberId) && member.name.toLowerCase().includes(search.trim().toLowerCase()))
+    !member.archived && (memberId === 'all' || member.id === memberId) && member.name.toLowerCase().includes(search.trim().toLowerCase()))
     .map(member => ({ ...member, history: member.history.filter(row => (!start || row.date >= start) && (!end || row.date <= end)) })),
-  [data, start, end, memberId, search, includeArchived]);
+  [data, start, end, memberId, search]);
   const services = useMemo(() => {
     const dates = new Map<string, { date: string; present: number; absent: number }>();
     for (const member of visibleMembers) for (const row of member.history) {
@@ -42,8 +41,8 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
         <button onClick={() => { setStart(''); setEnd(data?.today || dateInAccra()); }} className="rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800">All history</button>
         <label className="text-sm font-medium text-gray-700">Member<select value={memberId} onChange={event => setMemberId(event.target.value)} className="mt-1 block max-w-full rounded-lg border border-gray-300 bg-white px-3 py-2"><option value="all">All brethren</option>{data?.members.map(member => <option key={member.id} value={member.id}>{member.name}{member.archived ? ' (archived)' : ''}</option>)}</select></label>
       </div>
-      <div className="flex flex-wrap items-center gap-4"><input aria-label="Search attendance by name" placeholder="Search brethren by name…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /><label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={includeArchived} onChange={event => setIncludeArchived(event.target.checked)} />Include archived brethren</label></div>
-      <p className="text-xs text-gray-600">Only recorded present/absent entries count. Missing check-ins are not assumed absent. Overlapping records count once per person per service.</p>
+      <div className="flex flex-wrap items-center gap-4"><input aria-label="Search attendance by name" placeholder="Search brethren by name…" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
+      <p className="text-xs text-gray-600">Archived brethren are excluded. Only recorded present/absent entries count. Missing check-ins are not assumed absent. Overlapping records count once per person per service.</p>
       {invalidRange && <p role="alert" className="text-sm text-red-800">Choose a start date on or before the end date.</p>}
     </section>
     {loading ? <p role="status" className="py-8 text-gray-600">Loading attendance history…</p> : data && !error && !invalidRange && <>

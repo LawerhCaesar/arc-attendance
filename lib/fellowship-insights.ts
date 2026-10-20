@@ -1,6 +1,7 @@
 import type { AttendanceRecord, Member } from './database';
 import { nextBirthday } from './birthdays';
 import { normalizeDuplicatePhone } from './member-duplicates';
+import { excludeArchivedAttendance } from './archived-attendance';
 
 export function fellowshipBirthdayDirectory(members: { id: string; name: string; birthday?: string | null }[], today: string) {
   return members.map(member => {
@@ -35,7 +36,7 @@ export function validServiceDate(value: string): boolean {
  * member; ambiguous/shared contacts never inflate several members' totals.
  */
 export function fellowshipAttendanceReport(members: HistoryMemberInput[], rows: HistoryAttendanceInput[], fellowship: string, today: string): FellowshipAttendanceReport {
-  const roster = members.filter(member => member.id && member.fellowship === fellowship && !member.merged_into_id);
+  const roster = members.filter(member => member.id && member.fellowship === fellowship && member.is_active !== false && !member.merged_into_id);
   const byId = new Map(roster.map(member => [member.id!, member]));
   const phoneIndex = new Map<string, HistoryMemberInput[]>();
   const nameIndex = new Map<string, HistoryMemberInput[]>();
@@ -49,7 +50,7 @@ export function fellowshipAttendanceReport(members: HistoryMemberInput[], rows: 
   }
   const histories = new Map<string, Map<string, 'present' | 'absent'>>();
   let unlinkedRecords = 0;
-  for (const row of rows) {
+  for (const row of excludeArchivedAttendance(rows, members)) {
     if (row.fellowship !== fellowship) continue;
     const date = row.attendanceDate || row.date;
     if (!validServiceDate(date) || date > today || !['', 'present', 'absent'].includes(row.attendanceStatus || '')) continue;

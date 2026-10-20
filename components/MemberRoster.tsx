@@ -19,6 +19,7 @@ interface Member {
   location: string;
   cell_id?: string | null;
   bsct_group_id?: string | null;
+  is_active?: boolean;
 }
 
 const DESIGNATIONS = ['Fellowship Leader', 'Cell Leader', 'BSCT Leader', 'Member'] as const;
@@ -36,7 +37,8 @@ const emptyForm = (): Omit<Member, 'id'> => ({
 
 export default function MemberRoster({ canReviewDuplicates = false, fellowshipScope, onRosterChanged }: { canReviewDuplicates?: boolean; fellowshipScope?: string; onRosterChanged?: () => void }) {
   const [members, setMembers] = useState<Member[]>([]);
-  const [showArchived, setShowArchived] = useState(false);
+  const [rosterStatus, setRosterStatus] = useState<'all' | 'active' | 'archived'>('all');
+  const showArchived = rosterStatus === 'archived';
   const [cells, setCells] = useState<FellowshipCell[]>([]);
   const [bsctGroups, setBsctGroups] = useState<BsctGroup[]>([]);
   const [loadError, setLoadError] = useState('');
@@ -66,7 +68,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
     setLoadError('');
     try {
       const [res, structureRes] = await Promise.all([
-        fetch(showArchived ? '/api/members/archived' : '/api/members', { cache: 'no-store' }),
+        fetch('/api/members?status=all', { cache: 'no-store' }),
         fetch('/api/members/structure', { cache: 'no-store' }),
       ]);
       const result = await res.json();
@@ -80,7 +82,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       setBsctGroups(structure.bsctGroups);
     } catch (caught) { if (requestVersion === memberRequestVersion.current) setLoadError(caught instanceof Error ? caught.message : 'Unable to load your roster.'); }
     if (requestVersion === memberRequestVersion.current) setIsLoading(false);
-  }, [showArchived]);
+  }, []);
 
   useEffect(() => { setMembers([]); setCells([]); setBsctGroups([]); setCellFilter('all'); fetchMembers(); }, [fetchMembers, fellowshipScope]);
 
@@ -111,6 +113,8 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const fellowships = [...FELLOWSHIPS, 'Unassigned'].sort();
 
   const filtered = members.filter(m => {
+    if (rosterStatus === 'active' && m.is_active === false) return false;
+    if (rosterStatus === 'archived' && m.is_active !== false) return false;
     const matchFellowship = fellowshipFilter === 'all' || m.fellowship === fellowshipFilter;
     const matchDesignation = designationFilter === 'all' || m.designation === designationFilter;
     const matchCell = cellFilter === 'all' || (cellFilter === 'unassigned' ? !m.cell_id : m.cell_id === cellFilter);
@@ -182,7 +186,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: restore ? 'restore' : 'archive' }),
       });
       if (res.ok) {
-        setSuccessMsg(restore ? 'Member restored. Assign their cell and BSCT group from the active roster.' : 'Member archived. Their details and attendance history are preserved.');
+        setSuccessMsg(restore ? 'Member unarchived. Assign their cell and BSCT group from the active roster.' : 'Member archived. They remain in the roster and are excluded from attendance records and calculations.');
         onRosterChanged?.();
         await fetchMembers();
         setDuplicateReviewVersion(value => value + 1);
@@ -293,10 +297,9 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       {fellowshipScope && <p className="rounded-lg bg-blue-50 p-3 text-sm font-semibold text-blue-900">{fellowshipScope} Fellowship · Manage your brethren, cells and BSCT groups</p>}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-lg border border-gray-200 bg-white p-1" aria-label="Roster status">
-          <button type="button" aria-pressed={!showArchived} onClick={() => { if (!showArchived) return; setMembers([]); setShowArchived(false); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${!showArchived ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>Active brethren</button>
-          <button type="button" aria-pressed={showArchived} onClick={() => { if (showArchived) return; setMembers([]); setShowArchived(true); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${showArchived ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>Archived brethren</button>
+          {(['all', 'active', 'archived'] as const).map(status => <button key={status} type="button" aria-pressed={rosterStatus === status} onClick={() => { setRosterStatus(status); setCellFilter('all'); }} className={`rounded-md px-4 py-2 text-sm font-semibold ${rosterStatus === status ? 'bg-blue-600 text-white' : 'text-gray-700'}`}>{status === 'all' ? 'All brethren' : status === 'active' ? 'Active brethren' : 'Archived brethren'}</button>)}
         </div>
-        {showArchived && <p className="text-sm text-gray-600">Details and attendance are kept. Brethren return automatically when recorded present, or you can restore them here.</p>}
+        <p className="text-sm text-gray-600">Archived brethren stay here but do not count in attendance records or calculations. Use Unarchive, or record them present again, to return them.</p>
       </div>
       {loadError && <DismissibleBanner role="alert" onDismiss={() => setLoadError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{loadError} <button type="button" onClick={fetchMembers} className="ml-2 underline">Retry</button></DismissibleBanner>}
       {/* Success banner */}
@@ -305,7 +308,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       )}
 
       {!showArchived && canReviewDuplicates && <MemberDuplicateReview onRosterChanged={fetchMembers} refreshKey={duplicateReviewVersion} />}
-      {!showArchived && !loadError && <FellowshipStructure members={members} cells={cells} bsctGroups={bsctGroups} fellowshipScope={fellowshipScope} loading={isLoading} onChanged={fetchMembers} onEditMember={id => { const member = members.find(member => member.id === id); if (member) openEdit(member); }} />}
+      {!showArchived && !loadError && <FellowshipStructure members={members.filter(member => member.is_active !== false)} cells={cells} bsctGroups={bsctGroups} fellowshipScope={fellowshipScope} loading={isLoading} onChanged={fetchMembers} onEditMember={id => { const member = members.find(member => member.id === id && member.is_active !== false); if (member) openEdit(member); }} />}
 
       {!showArchived && <section aria-labelledby="member-export-heading" className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -323,13 +326,13 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
 
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by name, phone, or fellowship…"
-            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="min-w-0 flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:min-w-[12rem]"
           />
           <select
             value={designationFilter}
@@ -493,7 +496,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
               <thead className="bg-gray-50">
                 <tr>
                   {['Name', 'Phone', 'Fellowship', 'Cell / BSCT', 'Designation', 'Birthday', 'Location', 'Actions'].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th key={h} className={`px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide ${h === 'Actions' ? 'sticky right-0 z-20 bg-gray-50' : ''}`}>
                       {h}
                     </th>
                   ))}
@@ -507,7 +510,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                         <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold flex-shrink-0">
                           {member.name.trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                         </div>
-                        <span className="font-medium text-sm text-gray-900">{member.name}</span>
+                        <span className="font-medium text-sm text-gray-900">{member.name}{member.is_active === false && <span className="ml-2 inline-block rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700">Archived</span>}</span>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-500">{member.phone || '—'}</td>
@@ -520,20 +523,21 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
                     </td>
                     <td className="px-5 py-3 text-sm text-gray-500">{member.birthday || '—'}</td>
                     <td className="px-5 py-3 text-sm text-gray-500">{member.location || '—'}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex gap-2">
-                        {!showArchived && <button
+                    <td className="sticky right-0 z-10 border-l border-gray-100 bg-white px-4 py-3">
+                      <div className="flex gap-2 whitespace-nowrap">
+                        {member.is_active !== false && <button
                           onClick={() => openEdit(member)}
                           className="px-3 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition"
                         >
                           Edit
                         </button>}
                         <button
-                          onClick={() => handleArchive(member.id, showArchived)}
+                          aria-label={`${member.is_active === false ? 'Unarchive' : 'Archive'} ${member.name}`}
+                          onClick={() => handleArchive(member.id, member.is_active === false)}
                           disabled={deletingId === member.id}
-                          className="px-3 py-1 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition disabled:opacity-50"
+                          className={`px-3 py-1 text-xs rounded-lg transition disabled:opacity-50 ${member.is_active === false ? 'bg-blue-50 text-blue-800 hover:bg-blue-100' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'}`}
                         >
-                          {deletingId === member.id ? '…' : showArchived ? 'Restore' : 'Archive'}
+                          {deletingId === member.id ? '…' : member.is_active === false ? 'Unarchive' : 'Archive'}
                         </button>
                       </div>
                     </td>

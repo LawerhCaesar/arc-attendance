@@ -255,19 +255,22 @@ independently of email delivery configuration.
 The fellowship leader sidebar includes **Birthdays** (the full active fellowship
 list, with name search, month filters and missing birthday details) and
 **Fellowship Attendance History** (service graph, exact counts and expandable individual
-service dates). Attendance can be filtered by dates or member, with archived
-brethren included by default. Only explicitly recorded absences count as absent;
+service dates). Attendance can be filtered by dates or member; archived brethren
+are excluded from attendance views, data exports and calculations. Only explicitly recorded absences count as absent;
 overlaps count once per person/service, with present evidence taking precedence.
 Legacy attendance is linked only when a member can be identified unambiguously.
 Leaders use their existing Member Roster permission and remain restricted to
 their assigned fellowship. Staff with **By Fellowship** reporting access also see
 **Fellowship Attendance History**, with a fellowship selector.
 
-**Member Roster → Archive** retains the member and attendance records while
-removing them from active check-in, birthday lists and cell/BSCT assignments.
-**Archived brethren → Restore** returns them to the active roster; cell and BSCT
-assignments must be made again. Previously removed (soft-deleted) records appear
-in this archive, while records retired by approved duplicate merges do not.
+**Member Roster** defaults to **All brethren**, including clearly labelled
+archived brethren. Every active row has an **Archive** action, and archived rows
+have **Unarchive**. Actions stay visible when the table scrolls horizontally.
+Archiving retains stored history but excludes the person from attendance records,
+calculations, active check-in, birthday lists and cell/BSCT assignments.
+Unarchiving returns them to active views and calculations; cell and BSCT assignments
+must be made again. Previously removed (soft-deleted) records appear in the roster,
+while records retired by approved duplicate merges do not.
 Restore rejects a phone number already held by another active member. Duplicate
 phone messages name the existing member when that record is within the staff
 account's permitted roster; names outside a leader's fellowship remain private.
@@ -282,6 +285,25 @@ phone number rolls both back. Public check-in recognizes a returning archived
 member by their full name and fellowship with no conflicting known phone, rather
 than treating them as a first-time visitor. Existing historical attendance is not
 backfilled by this migration.
+
+Apply `supabase/migrations/20261020021249_fellowship_sunday_projections.sql`
+for **Sunday Projections**. Fellowship leaders select active brethren expected
+for a chosen Sunday and save their forecast. They can edit it until **12 noon
+on that Sunday in Africa/Accra**, including while attendance is being recorded.
+The database checks the cutoff at save time. Concurrent edits use revisions so
+one leader cannot silently overwrite another's forecast.
+
+The comparison distinguishes projected attendees who came, projected attendees
+without a present record, and unprojected arrivals (including visitors). Missing
+attendance is not automatically marked absent. Missing projections remain
+**Not submitted**, distinct from an explicitly saved zero forecast. Archived
+brethren are excluded from both forecast and actual counts while archived;
+unarchiving restores their inclusion. Administrators and pastors with Overview
+or By Fellowship access see the all-fellowship graph, counts and expandable names;
+only fellowship leaders can save their own fellowship's projection.
+
+Projection SQL checks and concurrency tests run only against a disposable database:
+`tests/sunday-projections.sql` and `tests/projection-concurrency.mjs`.
 
 Staff can sign in with their saved email or username and the same password.
 Emails are normalized and unique across managed and configured accounts.
