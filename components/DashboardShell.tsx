@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Permission } from '@/lib/permissions';
 
-export type DashboardTab = Exclude<Permission, 'entry'> | 'fellowship-birthdays' | 'fellowship-attendance' | 'sunday-projections';
+export type DashboardTab = Exclude<Permission, 'entry'> | 'fellowship-birthdays' | 'fellowship-attendance' | 'sunday-projections' | 'bulk-sms';
 interface NavigationItem { id: DashboardTab; label: string; icon: string }
 interface Props {
   children: ReactNode;
@@ -21,7 +21,7 @@ const sections: { label: string; ids: DashboardTab[] }[] = [
   { label: 'Workspace', ids: ['overview', 'care'] },
   { label: 'People', ids: ['members', 'fellowship-birthdays', 'first-timers', 'demographics', 'welfare'] },
   { label: 'Attendance', ids: ['sunday-projections', 'fellowship-attendance', 'past-entry', 'past-sundays', 'fellowship-services', 'absenteeism', 'raw-data'] },
-  { label: 'Administration', ids: ['users'] },
+  { label: 'Administration', ids: ['bulk-sms', 'users'] },
 ];
 
 function SidebarContent({ navigation, activeTab, onNavigate, onLogout, username, roleLabel, fellowship, loading, onClose }: Omit<Props, 'children'> & { onClose?: () => void }) {

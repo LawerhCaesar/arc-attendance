@@ -19,6 +19,7 @@ import PastSundaysList from '@/components/PastSundaysList';
 import AccessManagement from '@/components/AccessManagement';
 import WelfareBirthdayCenter from '@/components/WelfareBirthdayCenter';
 import PastoralWeekly from '@/components/PastoralWeekly';
+import BulkSms from '@/components/BulkSms';
 type AdminTab = DashboardTab;
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
@@ -34,6 +35,7 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'raw-data',             label: 'Raw Data',          icon: '🗃️' },
   { id: 'welfare',              label: 'Welfare / Birthdays', icon: '🎂' },
   { id: 'users',                label: 'Users & Roles',     icon: '🔐' },
+  { id: 'bulk-sms',             label: 'Bulk SMS',          icon: '✉️' },
   { id: 'fellowship-birthdays',  label: 'Birthdays',         icon: '🎂' },
   { id: 'fellowship-attendance', label: 'Fellowship Attendance History', icon: '📈' },
   { id: 'sunday-projections', label: 'Sunday Projections', icon: '☑️' },
@@ -43,6 +45,7 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
 // grant access to church-wide birthday or raw attendance endpoints.
 function visibleTabs(role: string, permissions: string[]) {
   return tabs.filter(tab => {
+    if (tab.id === 'bulk-sms') return role === 'admin';
     if (tab.id === 'care' && role === 'fellowship_leader') return permissions.includes('members');
     if (tab.id === 'fellowship-birthdays') return role === 'fellowship_leader' && permissions.includes('members');
     if (tab.id === 'fellowship-attendance') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('fellowship-services');
@@ -197,6 +200,7 @@ export default function AdminDashboard() {
 
         {activeTab === 'welfare' && permissions.includes('welfare') && <WelfareBirthdayCenter />}
         {activeTab === 'users' && permissions.includes('users') && <AccessManagement />}
+        {activeTab === 'bulk-sms' && sessionRole === 'admin' && <BulkSms />}
 
       </>}
     </DashboardShell>

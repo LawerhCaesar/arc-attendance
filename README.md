@@ -354,6 +354,30 @@ Apply `supabase/migrations/20261018163411_preserve_profile_followup_ownership.sq
 to preserve follow-up assignments atomically when a managed or configured account
 changes username. Historical audit entries keep the names recorded at the time.
 
+## Administrator bulk SMS
+
+Apply `supabase/migrations/20261020131331_bulk_sms_campaigns.sql`. Administrators
+can open **Bulk SMS** in the sidebar, choose one fellowship or the entire church,
+and preview the message, unique recipients and estimated SMS parts before sending.
+It uses the existing SMSOnlineGH API key and approved sender from Users & Roles.
+Only active, unmerged roster members with valid contacts are included; normalized
+shared numbers receive one message. GSM extensions and Unicode are counted when
+estimating message parts. Final charges depend on the provider plan and destination.
+
+Previews expire after 15 minutes and must be recreated if the audience or sender
+changes. Submissions use durable claims in batches of 250. Completed batches are
+never replayed. If a page closes between batches, an administrator can continue
+the remaining recipients from message history. Newly archived or changed contacts
+are skipped. Interrupted or uncertain provider submissions require manual review
+in SMSOnlineGH before another message is created; acceptance is not a delivery receipt.
+The service-only history records the audience, message, administrator and outcomes.
+
+**Check balance** reads the provider account balance. **Buy SMS credits** opens
+the [SMSOnlineGH account portal](https://portal.smsonlinegh.com/auth/login) in a new
+tab; top up the account whose API key is connected here, then refresh the balance.
+An embedded payment checkout is not configured. The provider's published API
+documents sending and balance checks, but no credit-purchase endpoint was found.
+
 ## SMS birthday reminders and Google Drive photos
 
 Apply `supabase/migrations/20261020023921_staff_photos_sms_and_integrations.sql`
