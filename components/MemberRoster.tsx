@@ -253,19 +253,20 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ members: imported }),
         })
-        .then(res => {
+        .then(async res => {
           if (res.ok) {
             setSuccessMsg(`Imported and saved ${imported.length} members to roster.`);
             fetchMembers();
             setDuplicateReviewVersion(value => value + 1);
             setTimeout(() => setSuccessMsg(null), 5000);
           } else {
-            setLoadError('Unable to import members. Every row must belong to your assigned fellowship.');
+            const result = await res.json().catch(() => ({}));
+            setLoadError(result.error || 'Unable to confirm the import. Refresh the roster before retrying.');
             setIsLoading(false);
           }
         })
         .catch(() => {
-          setLoadError('Unable to import members. Please try again.');
+          setLoadError('Unable to confirm the import. Refresh the roster before retrying.');
           setIsLoading(false);
         });
       } catch {

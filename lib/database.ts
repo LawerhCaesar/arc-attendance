@@ -248,6 +248,15 @@ export async function createMember(
   return data;
 }
 
+/** Import in one transaction: a duplicate phone rejects the whole file. */
+export async function createMembers(members: Omit<Member, 'id' | 'created_at' | 'updated_at'>[]): Promise<void> {
+  if (!members.length) return;
+  const { error } = await (getSupabaseAdmin() || supabase).from(MEMBERS_TABLE).insert(members.map(member => ({
+    ...member, fellowship: matchFellowship(member.fellowship), is_active: true,
+  })));
+  if (error) throw error;
+}
+
 /** Auto-sync Member from Attendance */
 export async function syncMemberFromAttendance(record: AttendanceRecord, memberId?: string, fellowshipScope?: string): Promise<void> {
   if (!record.name) return;

@@ -77,3 +77,18 @@ test('importing a shared phone never updates someone in another fellowship', asy
   assert.equal(rows[1].location, '');
   assert.equal(rows[2].fellowship, 'Shalach');
 });
+
+test('roster imports submit one atomic insert and preserve database phone conflicts', async () => {
+  let requests = 0;
+  globalThis.fetch = async (_input, init) => {
+    requests++;
+    assert.equal(init?.method, 'POST');
+    const rows = JSON.parse(String(init?.body));
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((row: Member) => row.is_active === true));
+    return new Response(JSON.stringify({ code: '23505', message: 'Duplicate phone' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+  };
+  const input = { name: 'Synthetic', phone: '0503700378', fellowship: 'Shalach', designation: 'Member', birthday: '', location: '' };
+  await assert.rejects(database.createMembers([input, { ...input, name: 'Other', phone: '+233503700378' }]), (error: { code?: string }) => error.code === '23505');
+  assert.equal(requests, 1);
+});

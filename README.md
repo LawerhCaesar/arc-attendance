@@ -219,6 +219,21 @@ details do not independently flag duplicates. Missing or malformed phone numbers
 are excluded. Shared-phone records still require an explicit review and merge
 decision, and saved keep-separate decisions remain in effect.
 
+Apply `supabase/migrations/20261020011702_prevent_duplicate_member_phones.sql` to
+block conflicting phone saves globally across active members. Creates, edits,
+reactivation and imports use the same normalized key, with database enforcement
+for simultaneous submissions. Existing duplicates remain available for review;
+their next edit must resolve the phone conflict, or they can be removed/merged.
+Also apply `supabase/migrations/20261020012022_preserve_partial_phone_duplicate_merges.sql`
+so approved partial merges can reduce existing duplicate groups atomically. Blank or malformed numbers stay outside
+phone matching. Imports now insert the whole file atomically: a conflicting row
+rejects the import without updating existing members or saving part of the file.
+The rollback-only SQL check is `tests/member-phone-unique.sql`; run
+`tests/member-phone-concurrency.mjs` with explicit disposable `PGHOST`, `PGPORT`
+and `PGDATABASE` settings to verify simultaneous saves.
+`tests/member-phone-legacy-merges.mjs` verifies reviewed partial merges and
+continued blocking of ordinary duplicate saves in separate transactions.
+
 ## Account emails and fellowship birthday reminders
 
 Apply the account email migration and
