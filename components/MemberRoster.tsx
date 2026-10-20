@@ -8,6 +8,7 @@ import MemberEditSignIn from '@/components/MemberEditSignIn';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 import { dateInAccra } from '@/lib/birthdays';
 import type { RosterAttendanceColor, RosterAttendanceSummary } from '@/lib/roster-attendance';
+import { matchesRosterColor, sortRosterMembers, type RosterColorFilter, type RosterSortKey } from '@/lib/roster-view';
 
 interface Member {
   id: string;
@@ -23,6 +24,17 @@ interface Member {
 }
 
 const DESIGNATIONS = ['Fellowship Leader', 'Member'] as const;
+const rosterColumns: {key:RosterSortKey;label:string}[] = [
+  {key:'name',label:'Name'},{key:'attendance',label:'Attendance'},{key:'phone',label:'Phone'},
+  {key:'fellowship',label:'Fellowship'},{key:'designation',label:'Designation'},{key:'birthday',label:'Birthday'},{key:'location',label:'Location'},
+];
+const colorFilters: {key:RosterColorFilter;label:string;style:string}[] = [
+  {key:'all',label:'All colors',style:'border-gray-300 bg-white text-gray-800'},
+  {key:'green',label:'Green · 4–8 services',style:'border-green-300 bg-green-100 text-green-900'},
+  {key:'yellow',label:'Yellow · 1–3 services',style:'border-yellow-300 bg-yellow-100 text-yellow-900'},
+  {key:'red',label:'Red · 0 services',style:'border-red-300 bg-red-100 text-red-900'},
+  {key:'gray',label:'Gray · archived / unavailable',style:'border-gray-300 bg-gray-100 text-gray-700'},
+];
 const attendanceStyles: Record<RosterAttendanceColor, {row:string;badge:string;label:string}> = {
   green:{row:'bg-green-50 hover:bg-green-100',badge:'border-green-300 bg-green-100 text-green-900',label:'Regular'},
   yellow:{row:'bg-yellow-50 hover:bg-yellow-100',badge:'border-yellow-300 bg-yellow-100 text-yellow-900',label:'Inconsistent'},
@@ -54,6 +66,9 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const [search, setSearch] = useState('');
   const [fellowshipFilter, setFellowshipFilter] = useState('all');
   const [designationFilter, setDesignationFilter] = useState('all');
+  const [colorFilter,setColorFilter] = useState<RosterColorFilter>('all');
+  const [sortKey,setSortKey] = useState<RosterSortKey>('attendance');
+  const [sortDirection,setSortDirection] = useState<'asc'|'desc'>('desc');
   const [showForm, setShowForm] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [form, setForm] = useState<Omit<Member, 'id'>>(emptyForm());
@@ -128,15 +143,21 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
 
   const fellowships = [...FELLOWSHIPS, 'Unassigned'].sort();
 
-  const filtered = members.filter(m => {
+  const filtered = sortRosterMembers(members.filter(m => {
     if (rosterStatus === 'active' && m.is_active === false) return false;
     if (rosterStatus === 'archived' && m.is_active !== false) return false;
+    if (!matchesRosterColor(m,attendance,colorFilter)) return false;
     const matchFellowship = fellowshipFilter === 'all' || m.fellowship === fellowshipFilter;
     const matchDesignation = designationFilter === 'all' || m.designation === designationFilter;
     const q = search.toLowerCase().trim();
     const matchSearch = !q || m.name.toLowerCase().includes(q) || m.fellowship.toLowerCase().includes(q) || m.phone.includes(q);
     return matchFellowship && matchDesignation && matchSearch;
-  });
+  }),attendance,sortKey,sortDirection);
+
+  const changeSort = (key: RosterSortKey) => {
+    setSortDirection(key === sortKey ? sortDirection === 'asc' ? 'desc' : 'asc' : key === 'attendance' ? 'desc' : 'asc');
+    setSortKey(key);
+  };
 
   const openAdd = () => {
     setNeedsSignIn(false);
@@ -324,7 +345,8 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
       </div>
       <section aria-label="Roster attendance colors" className="space-y-2 rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-semibold text-gray-950">Attendance · last 8 services</h3><button type="button" onClick={fetchMembers} disabled={isLoading || attendanceLoading} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-50">Refresh attendance</button></div>
-        <div className="flex flex-wrap gap-2 text-xs font-semibold"><span className="rounded-full border border-green-300 bg-green-100 px-3 py-1 text-green-900">Green · 4–8 services</span><span className="rounded-full border border-yellow-300 bg-yellow-100 px-3 py-1 text-yellow-900">Yellow · 1–3 services</span><span className="rounded-full border border-red-300 bg-red-100 px-3 py-1 text-red-900">Red · 0 services</span><span className="rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-gray-700">Gray · archived / unavailable</span></div>
+        <div role="group" aria-label="Filter roster by attendance color" className="flex flex-wrap gap-2 text-xs font-semibold">{colorFilters.map(filter => <button key={filter.key} type="button" aria-pressed={colorFilter===filter.key} onClick={() => setColorFilter(current => current===filter.key ? 'all' : filter.key)} className={`rounded-full border px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 ${filter.style} ${colorFilter===filter.key?'ring-2 ring-blue-600 ring-offset-2':''}`}>{filter.label}</button>)}</div>
+        <p className="text-xs text-gray-600">Select a color to filter the roster. Select it again or choose All colors to clear.</p>
         <p className="text-xs text-gray-600">Recorded present attendance, counted once per church service date. {attendanceLoading ? 'Loading attendance…' : attendance?.serviceDates.length ? `${attendance.serviceDates.length} recorded service${attendance.serviceDates.length===1?'':'s'} in this window: ${attendance.serviceDates[attendance.serviceDates.length-1]} to ${attendance.serviceDates[0]}.${attendance.serviceDates.length<8?' Fewer than eight services are available.':''}` : attendance ? 'No recorded services yet.' : 'Attendance colors are unavailable.'}</p>
         {attendanceError && <p role="alert" className="text-sm text-red-800">{attendanceError} <button type="button" onClick={fetchAttendanceSummary} className="font-semibold underline">Retry attendance</button></p>}
       </section>
@@ -390,9 +412,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
             </button>
           </div>}
         </div>
-        <p className="text-xs text-gray-400 mt-2">
-          Showing {filtered.length} of {members.length} members
-        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600"><p aria-live="polite">Showing {filtered.length} of {members.length} members · Sorted by {rosterColumns.find(column=>column.key===sortKey)?.label.toLowerCase()} ({sortDirection==='asc'?'ascending':'descending'})</p>{(sortKey!=='attendance'||sortDirection!=='desc')&&<button type="button" onClick={()=>{setSortKey('attendance');setSortDirection('desc');}} className="font-semibold text-blue-800 underline">Reset to color order</button>}</div>
       </div>
 
       {/* Add / Edit modal */}
@@ -505,11 +525,12 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
             <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Name', 'Attendance', 'Phone', 'Fellowship', 'Designation', 'Birthday', 'Location', 'Actions'].map(h => (
-                    <th key={h} className={`px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide ${h === 'Actions' ? 'sticky right-0 z-20 bg-gray-50' : ''}`}>
-                      {h}
+                  {rosterColumns.map(column => (
+                    <th key={column.key} scope="col" aria-sort={sortKey===column.key?sortDirection==='asc'?'ascending':'descending':'none'} className="px-5 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      <button type="button" onClick={()=>changeSort(column.key)} aria-label={`Sort by ${column.label.toLowerCase()}`} className="flex items-center gap-1.5 rounded py-1 text-left uppercase hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"><span>{column.label}</span><span aria-hidden="true" className={sortKey===column.key?'text-blue-700':'text-gray-400'}>{sortKey===column.key?sortDirection==='asc'?'↑':'↓':'↕'}</span></button>
                     </th>
                   ))}
+                  <th scope="col" className="sticky right-0 z-20 bg-gray-50 px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">

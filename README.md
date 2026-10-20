@@ -247,6 +247,13 @@ than eight services exist, the displayed denominator is the available count;
 no service data or a failed attendance load stays neutral. **Refresh attendance**
 reloads the roster and colors. The authenticated summary endpoint scopes member
 details to the leader's fellowship; only service dates are shared across scopes.
+The default roster order is attendance descending: green, yellow, red, then gray.
+Within the colored groups, higher attendance comes first and names break ties.
+Click a data column header to sort it; click again to reverse direction. Birthdays
+sort by calendar month/day, phone formats are normalized for comparison, and
+missing values stay last. **Reset to color order** restores the default.
+Color pills filter alongside search, fellowship, designation and archive status;
+click the selected color again or **All colors** to clear the color filter.
 
 ## Account emails and fellowship birthday reminders
 
