@@ -6,6 +6,23 @@ export interface BirthdayOccurrence {
   display: string;
 }
 
+export interface UpcomingBirthday {
+  id: string;
+  name: string;
+  nextBirthday: string;
+  birthdayLabel: string;
+  daysUntil: number;
+}
+
+export function upcomingBirthdays(members: { id: string; name: string; birthday?: string | null }[], today: string, windowDays = 60): UpcomingBirthday[] {
+  return members.flatMap(member => {
+    const occurrence = nextBirthday(member.birthday || '', today);
+    if (!occurrence || occurrence.daysUntil > windowDays) return [];
+    return [{ id: member.id, name: member.name, nextBirthday: occurrence.nextDate,
+      birthdayLabel: occurrence.display, daysUntil: occurrence.daysUntil }];
+  }).sort((a, b) => a.daysUntil - b.daysUntil || a.name.localeCompare(b.name));
+}
+
 export function dateInAccra(now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Africa/Accra',

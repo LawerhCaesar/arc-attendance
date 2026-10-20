@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import DismissibleBanner from '@/components/DismissibleBanner';
+import UpcomingFellowshipBirthdays from '@/components/UpcomingFellowshipBirthdays';
 
 interface Profile { displayName: string; username: string; email: string | null; role: string; fellowship?: string; dashboardUrl: string; birthdayEmailReady: boolean }
 
@@ -51,6 +52,7 @@ export default function AccountPage() {
       {error && <DismissibleBanner role="alert" onDismiss={() => setError('')} className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</DismissibleBanner>}
       {notice && <DismissibleBanner role="status" onDismiss={() => setNotice('')} className="rounded-xl bg-green-50 p-4 text-sm text-green-900">{notice}</DismissibleBanner>}
       {!profile ? <p className="text-sm text-gray-600">{error ? 'Account settings are unavailable.' : 'Loading your account…'}</p> : <>
+        {profile.role === 'fellowship_leader' && <UpcomingFellowshipBirthdays />}
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-lg font-bold text-gray-950">{profile.displayName}</h2><p className="mt-1 text-sm text-gray-600">@{profile.username}{profile.fellowship ? ` · ${profile.fellowship}` : ''}</p>
           <form onSubmit={save} className="mt-5 space-y-5">
