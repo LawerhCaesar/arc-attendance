@@ -7,6 +7,8 @@ export interface DuplicateMember {
   birthday?: string;
   location?: string;
   created_at?: string;
+  is_active?: boolean;
+  merged_into_id?: string | null;
 }
 
 export interface MemberDuplicateCandidate {
@@ -53,17 +55,33 @@ export function duplicateCandidateForPair(
   memberB: DuplicateMember,
 ): MemberDuplicateCandidate | null {
   const phone = normalizeDuplicatePhone(memberA.phone);
-  if (memberA.id === memberB.id || !phone || phone !== normalizeDuplicatePhone(memberB.phone)) return null;
+  const otherPhone = normalizeDuplicatePhone(memberB.phone);
+  if (memberA.id === memberB.id || memberA.merged_into_id || memberB.merged_into_id) return null;
+  const samePhone = Boolean(phone && phone === otherPhone);
+  if (!samePhone) {
+    // Different valid numbers remain different identities. Missing numbers need
+    // a full-name match plus fellowship and corroborating member details.
+    if (phone && otherPhone) return null;
+    const name = nameKey(memberA.name);
+    if (!name.includes(' ') || name !== nameKey(memberB.name) || !sameDetail(memberA.fellowship, memberB.fellowship) ||
+      !(sameDetail(memberA.birthday, memberB.birthday) || sameDetail(memberA.location, memberB.location))) return null;
+  }
 
   return {
     pairKey: duplicatePairKey(memberA.id, memberB.id),
     memberA,
     memberB,
-    confidence: 'high',
-    score: 100,
-    reasons: ['Phone numbers match'],
+    confidence: samePhone ? 'high' : 'medium',
+    score: samePhone ? 100 : 70,
+    reasons: samePhone ? ['Phone numbers match'] : ['Full names match', 'Fellowships match',
+      ...(sameDetail(memberA.birthday, memberB.birthday) ? ['Birthdays match'] : []),
+      ...(sameDetail(memberA.location, memberB.location) ? ['Locations match'] : []), 'Phone missing or invalid; review required'],
   };
 }
+
+const detailKey = (value?: string) => (value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+const sameDetail = (left?: string, right?: string) => Boolean(detailKey(left) && !['-', 'n/a', 'unknown', 'unassigned'].includes(detailKey(left)) && detailKey(left) === detailKey(right));
+const nameKey = (value: string) => detailKey(value).split(' ').filter(Boolean).sort().join(' ');
 
 export function findMemberDuplicateCandidates(
   members: DuplicateMember[],
@@ -75,14 +93,19 @@ export function findMemberDuplicateCandidates(
 
   members.forEach(member => {
     const phone = normalizeDuplicatePhone(member.phone);
-    if (!phone || seenIds.has(member.id)) return;
+    if (seenIds.has(member.id) || member.merged_into_id) return;
     seenIds.add(member.id);
-    const group = phoneGroups.get(phone) || [];
-    group.push(member);
-    phoneGroups.set(phone, group);
+    const keys = [phone ? `phone:${phone}` : '', `name:${nameKey(member.name)}`].filter(Boolean);
+    for (const key of keys) {
+      const group = phoneGroups.get(key) || [];
+      group.push(member);
+      phoneGroups.set(key, group);
+    }
   });
 
+  const emitted = new Set<string>();
   phoneGroups.forEach(group => {
+    group.sort((a, b) => Number(b.is_active !== false) - Number(a.is_active !== false) || (a.created_at || '').localeCompare(b.created_at || '') || a.id.localeCompare(b.id));
     const covered = new Set<string>();
     // One anchor covers a repeated phone number without quadratic pairings.
     // An excluded record may need another anchor to retain unreviewed matches.
@@ -90,8 +113,10 @@ export function findMemberDuplicateCandidates(
       if (covered.has(anchor.id)) continue;
       for (const member of group) {
         if (anchor.id === member.id || ignoredPairKeys.has(duplicatePairKey(anchor.id, member.id))) continue;
-        const candidate = duplicateCandidateForPair(anchor, member)!;
-        candidates.push(candidate);
+        const candidate = duplicateCandidateForPair(anchor, member);
+        if (!candidate) continue;
+        if (!emitted.has(candidate.pairKey)) candidates.push(candidate);
+        emitted.add(candidate.pairKey);
         covered.add(anchor.id);
         covered.add(member.id);
       }

@@ -214,12 +214,16 @@ the migrations and roll back their fixtures.
 
 ## Member duplicate review
 
-Member duplicate review requires an exact normalized phone-number match. Ghana
-local, nine-digit and `+233`/`00233` formats use the same identifier; international
-country codes remain distinct. Names, fellowship, birthdays and other shared
-details do not independently flag duplicates. Missing or malformed phone numbers
-are excluded. Shared-phone records still require an explicit review and merge
-decision, and saved keep-separate decisions remain in effect.
+Member duplicate review uses normalized phone-number matches. Ghana local,
+nine-digit and `+233`/`00233` formats use the same identifier; international
+country codes remain distinct. If either number is missing or invalid, matching
+full names (including reversed name order), fellowship, and birthday or location
+suggest a review. Two different valid numbers remain separate identities.
+Apply `supabase/migrations/20261025111249_review_archived_duplicates.sql` to include
+unmerged archived copies in reviewed merges into an active primary. The original
+archive state and attendance history are preserved in the merge audit. All merges
+require an explicit decision, and saved keep-separate decisions remain in effect.
+Raw Data's duplicate removal handles attendance rows, separately from this roster review.
 
 Apply `supabase/migrations/20261020011702_prevent_duplicate_member_phones.sql` to
 block conflicting phone saves globally across active members. Creates, edits,

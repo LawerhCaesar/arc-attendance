@@ -14,11 +14,17 @@ test('a partially completed group only sends active secondary records to the mer
 });
 
 test('deleted records or records merged elsewhere require a fresh review', () => {
-  for (const merged_into_id of [null, 'other']) {
+  for (const merged_into_id of ['other']) {
     const members = [{ id: 'p', is_active: true }, { id: 'a', is_active: false, merged_into_id }];
     assert.equal(evaluateMemberMerge(members, ['p', 'a'], 'p').state, 'stale');
   }
   assert.equal(evaluateMemberMerge([{ id: 'p', is_active: true }], ['p', 'missing'], 'p').state, 'stale');
+});
+
+test('unmerged archived copies are pending review and an active primary is required', () => {
+  const members = [{ id: 'p', is_active: true }, { id: 'a', is_active: false, merged_into_id: null }];
+  assert.deepEqual(evaluateMemberMerge(members, ['p', 'a'], 'p'), { state: 'pending', secondaryIds: ['a'] });
+  assert.equal(evaluateMemberMerge(members, ['p', 'a'], 'a').state, 'stale');
 });
 
 test('a primary that has been merged or removed cannot silently absorb another group', () => {

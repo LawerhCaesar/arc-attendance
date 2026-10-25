@@ -11,11 +11,11 @@ interface MemberDuplicateReviewProps {
 
 function MemberCard({ member, selected, onSelect }: { member: DuplicateMember; selected: boolean; onSelect: () => void }) {
   return (
-    <button type="button" onClick={onSelect} className={`w-full rounded-xl border p-4 text-left transition ${selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-blue-200'}`}>
+    <button type="button" disabled={member.is_active === false} onClick={onSelect} className={`w-full rounded-xl border p-4 text-left transition ${selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-gray-200 bg-white hover:border-blue-200'}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-semibold text-gray-900">{member.name}</p>
-          <p className="mt-1 text-xs text-gray-500">{member.designation || 'Member'}</p>
+          <p className="mt-1 text-xs text-gray-500">{member.designation || 'Member'}{member.is_active === false ? ' · Archived (can merge into an active primary)' : ''}</p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${selected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
           {selected ? 'Primary' : 'Select'}
@@ -115,7 +115,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <h3 className="font-bold text-amber-950">Possible duplicate members</h3>
             <span className="rounded-full bg-amber-200 px-2.5 py-0.5 text-xs font-bold text-amber-900">{totalGroups}</span>
           </div>
-          <p className="mt-1 text-xs leading-5 text-amber-800">Records are matched by the same phone number, including Ghana local and +233 formats. Missing or invalid numbers are excluded. Review each record and select which ones to merge or keep separate. No record is merged automatically.</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">Matches use the same phone number. When a number is missing or invalid, matching full names, fellowship and birthday or location suggest a review. Archived copies are included alongside active members. Select the records to merge into an active primary or keep separate. No record is merged automatically.</p>
         </div>
         <span className="shrink-0 text-sm font-semibold text-amber-900">{expanded ? 'Hide' : 'Review'}</span>
       </button>
@@ -131,7 +131,7 @@ export default function MemberDuplicateReview({ onRosterChanged, refreshKey = 0 
             <article key={group.groupKey} className="rounded-xl border border-gray-200 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">Same phone number</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">{group.reasons.includes('Phone numbers match') ? 'Same phone number' : 'Matching member details'}</span>
                   <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-700">{group.matchCount} possible match{group.matchCount === 1 ? '' : 'es'}</span>
                 </div>
                 <p className="text-xs text-gray-500">{group.reasons.slice(0, 3).join(' · ')}</p>

@@ -114,3 +114,25 @@ test('changing a phone invalidates a previously suggested duplicate pair', () =>
   changed.phone = '0201234567';
   assert.equal(duplicateCandidateForPair(original, changed), null);
 });
+
+test('Michael-style imported copies with missing phones include archived records for review', () => {
+  const copies = Array.from({ length: 13 }, (_, index) => ({ id: String(index), name: 'Acheampong Michael',
+    phone: index === 0 ? '-' : '', fellowship: 'Young and Ready', birthday: '17-05', location: 'Amamoley', is_active: index > 2 }));
+  const groups = groupMemberDuplicateCandidates(findMemberDuplicateCandidates(copies));
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].memberIds.length, 13);
+  assert.equal(groups[0].anchor.is_active, true);
+  assert.equal(groups[0].confidence, 'medium');
+  assert.ok(groups[0].reasons.includes('Birthdays match'));
+  assert.equal(findMemberDuplicateCandidates(copies, new Set(copies.flatMap(a => copies.filter(b => a.id !== b.id).map(b => [a.id,b.id].sort().join(':'))))).length, 0);
+});
+
+test('missing-phone evidence requires a full name, fellowship and a supporting detail', () => {
+  const a = { ...member('a', 'Acheampong Michael', ''), birthday: '17-05', location: 'Accra' };
+  assert.ok(duplicateCandidateForPair(a, { ...a, id: 'b', name: 'Michael Acheampong', phone: '-' }));
+  assert.equal(duplicateCandidateForPair(a, { ...a, id: 'b', name: 'Michael' }), null);
+  assert.equal(duplicateCandidateForPair(a, { ...a, id: 'b', fellowship: 'Shalach' }), null);
+  assert.equal(duplicateCandidateForPair(a, { ...a, id: 'b', birthday: '', location: '' }), null);
+  assert.equal(duplicateCandidateForPair(a, { ...a, id: 'b', merged_into_id: 'a' }), null);
+  assert.equal(duplicateCandidateForPair({ ...a, phone: '0201234567' }, { ...a, id: 'b', phone: '0241234567' }), null);
+});

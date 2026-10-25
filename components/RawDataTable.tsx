@@ -98,7 +98,7 @@ export default function RawDataTable({ canAdminister = false }: { canAdminister?
   };
 
   const handleCleanDuplicates = async () => {
-    if (!confirm('Are you sure you want to scan and remove all duplicate records from the database? This cannot be undone.')) return;
+    if (!confirm('Remove repeated attendance entries for the same person and service date? This does not merge member roster records. Use Member Roster → Possible duplicate members to review those. This cannot be undone.')) return;
     
     setIsCleaning(true);
     setCleanMessage(null);
@@ -165,7 +165,7 @@ export default function RawDataTable({ canAdminister = false }: { canAdminister?
             disabled={isCleaning}
             className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition whitespace-nowrap disabled:opacity-50"
           >
-            {isCleaning ? 'Cleaning...' : 'Remove DB Duplicates'}
+            {isCleaning ? 'Cleaning...' : 'Remove Duplicate Attendance'}
           </button>
           <button
             onClick={handleCleanFellowships}

@@ -38,11 +38,11 @@ function orderedIds(left: string, right: string): [string, string] {
   return left.localeCompare(right) <= 0 ? [left, right] : [right, left];
 }
 
-async function loadActiveMembers(admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>, ids?: string[]) {
+async function loadUnmergedMembers(admin: NonNullable<ReturnType<typeof getSupabaseAdmin>>, ids?: string[]) {
   let query = admin
     .from('members')
-    .select('id, name, phone, fellowship, designation, birthday, location, created_at')
-    .eq('is_active', true);
+    .select('id, name, phone, fellowship, designation, birthday, location, created_at, is_active, merged_into_id')
+    .is('merged_into_id', null);
   if (ids) query = query.in('id', ids);
   return fetchAllRows<DuplicateMember>((from, to) => query.order('name').order('id').range(from, to));
 }
@@ -57,17 +57,17 @@ export async function GET(request: NextRequest) {
     if (!admin) return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required' }, { status: 503 });
 
     const [members, decisions] = await Promise.all([
-      loadActiveMembers(admin),
+      loadUnmergedMembers(admin),
       fetchAllRows<{ member_a_id: string; member_b_id: string }>((from, to) => admin
         .from('member_duplicate_decisions').select('member_a_id, member_b_id').order('id').range(from, to)),
     ]);
     const ignored = new Set(decisions.map(row => duplicatePairKey(row.member_a_id, row.member_b_id)));
     const candidates = findMemberDuplicateCandidates(members, ignored);
-    const groups = groupMemberDuplicateCandidates(candidates);
+    const groups = groupMemberDuplicateCandidates(candidates).filter(group => group.anchor.is_active !== false);
     const requestedPage = Number.parseInt(request.nextUrl.searchParams.get('page') || '1', 10);
     const requestedPageSize = Number.parseInt(request.nextUrl.searchParams.get('pageSize') || '5', 10);
     const pageSize = Math.min(10, Math.max(1, Number.isFinite(requestedPageSize) ? requestedPageSize : 5));
-    const totalCandidates = candidates.length;
+    const totalCandidates = groups.reduce((total, group) => total + group.matchCount, 0);
     const totalGroups = groups.length;
     const totalPages = Math.max(1, Math.ceil(totalGroups / pageSize));
     const page = Math.min(totalPages, Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1));
@@ -128,9 +128,9 @@ export async function POST(request: NextRequest) {
     }, { headers: liveHeaders });
     if (action === 'merge' && mergeState.state === 'complete') return completed();
     if (members.length !== memberIds.length || (action === 'merge' && mergeState.state === 'stale') ||
-      (action === 'keep_separate' && members.some(member => !member.is_active))) return stale();
+      (action === 'keep_separate' && members.some(member => member.merged_into_id))) return stale();
     const anchor = members.find(member => member.id === anchorId)!;
-    const matches = members.filter(member => member.id !== anchorId && member.is_active).map(member => ({
+    const matches = members.filter(member => member.id !== anchorId && !member.merged_into_id).map(member => ({
       member,
       candidate: duplicateCandidateForPair(anchor, member),
     }));
