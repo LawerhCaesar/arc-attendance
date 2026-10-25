@@ -225,6 +225,21 @@ archive state and attendance history are preserved in the merge audit. All merge
 require an explicit decision, and saved keep-separate decisions remain in effect.
 Raw Data's duplicate removal handles attendance rows, separately from this roster review.
 
+Apply `supabase/migrations/20261025112600_preserve_distinct_member_attendance.sql`
+to protect attendance evidence during merges. Linked attendance from both members
+is retained under the primary. Each distinct service attended counts once;
+present wins over overlapping absent evidence. For the same eight-service window,
+3/8 plus 5/8 becomes 8/8 when there are no overlapping services. Stored rows,
+dates, statuses and first-visit evidence are checked before the merge commits.
+Unlinked history requires a matching reviewed name and fellowship, without a
+conflicting phone or another roster owner. A shared phone alone cannot claim
+another person's attendance. Ambiguous history stays unlinked for review.
+
+Raw Data's **Check Attendance Overlaps** action is read-only. It reports logical
+consolidation without deleting source rows; the legacy cleanup URL also follows
+this behavior. Deleting the oldest/newest duplicate can discard present evidence,
+so permanent attendance cleanup is no longer available through that action.
+
 Apply `supabase/migrations/20261020011702_prevent_duplicate_member_phones.sql` to
 block conflicting phone saves globally across active members. Creates, edits,
 reactivation and imports use the same normalized key, with database enforcement

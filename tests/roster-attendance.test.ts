@@ -39,3 +39,23 @@ test('missing service data is neutral, while fewer than eight available services
   const report=rosterAttendanceSummary([member('a')],rows,rows,'2026-10-20');
   assert.equal(report.serviceDates.length,3);assert.deepEqual(report.members.a,{attended:3,color:'yellow'});
 });
+
+test('reviewed merged histories union 3/8 and 5/8 into 8/8, with overlaps counted once and present winning', () => {
+  const window = dates.slice(-8);
+  const primary = member('primary');
+  const primaryRows = window.slice(0,3).map(date => row('primary',date));
+  const secondaryRows = window.slice(3).map(date => row('primary',date,{id:`secondary-${date}`}));
+  const mergedRows = [...primaryRows, ...secondaryRows, row('primary',window[0],{id:'overlap-absent',attendanceStatus:'absent'}),row('primary',window[1],{id:'overlap-present'})];
+  assert.equal(rosterAttendanceSummary([primary],primaryRows,calendar,'2026-10-20').members.primary.attended,3);
+  assert.equal(rosterAttendanceSummary([primary],secondaryRows,calendar,'2026-10-20').members.primary.attended,5);
+  assert.deepEqual(rosterAttendanceSummary([primary],mergedRows,calendar,'2026-10-20').members.primary,{attended:8,color:'green'});
+  const overlap = [...primaryRows,...window.slice(2,7).map(date=>row('primary',date,{id:`shared-${date}`}))];
+  assert.equal(rosterAttendanceSummary([primary],overlap,calendar,'2026-10-20').members.primary.attended,7);
+});
+
+test('archiving a different member sharing a phone never adds their linked attendance to an active member', () => {
+  const members = [member('abigail',{phone:'0201234567'}),member('jonathan',{phone:'0201234567',is_active:false})];
+  const report=rosterAttendanceSummary(members,[row('abigail',dates[2]),row('abigail',dates[5]),...dates.slice(-3).map(date=>row('jonathan',date))],calendar,'2026-10-20');
+  assert.equal(report.members.abigail.attended,2);
+  assert.equal(report.members.jonathan.color,'archived');
+});

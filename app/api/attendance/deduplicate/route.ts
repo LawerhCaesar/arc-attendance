@@ -1,48 +1,18 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { isAuthenticated } from '@/lib/auth';
+import { getAuthContext } from '@/lib/auth';
+import { getAttendanceData } from '@/lib/database';
+import { consolidateLinkedAttendance } from '@/lib/attendance-identity';
 
+/** Legacy cleanup URL now verifies logical consolidation without deleting evidence. */
 export async function POST() {
+  const context = await getAuthContext();
+  if (context?.role !== 'admin') return NextResponse.json({ error: 'Administrator access required.' }, { status: context ? 403 : 401 });
   try {
-    const auth = await isAuthenticated(['admin']);
-    if (!auth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: records, error } = await supabase
-      .from('attendance')
-      .select('id, name, date, attendanceDate, createdAt')
-      .order('createdAt', { ascending: true }); // Keep oldest
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const seen = new Set();
-    const duplicates: string[] = [];
-
-    for (const record of (records || [])) {
-      const targetDate = record.attendanceDate || record.date;
-      const key = `${record.name.trim().toLowerCase()}_${targetDate}`;
-
-      if (seen.has(key)) {
-        duplicates.push(record.id);
-      } else {
-        seen.add(key);
-      }
-    }
-
-    if (duplicates.length > 0) {
-      // Batch delete
-      for (let i = 0; i < duplicates.length; i += 100) {
-        const batch = duplicates.slice(i, i + 100);
-        await supabase.from('attendance').delete().in('id', batch);
-      }
-      return NextResponse.json({ message: `Successfully removed ${duplicates.length} duplicate entries.` }, { status: 200 });
-    }
-
-    return NextResponse.json({ message: 'No duplicates found in the database.' }, { status: 200 });
-  } catch (err: any) {
-    return NextResponse.json({ error: 'An unexpected error occurred.' }, { status: 500 });
-  }
+    const rows = await getAttendanceData({ preserveOverlaps: true });
+    const consolidated = consolidateLinkedAttendance(rows);
+    const overlaps = rows.length - consolidated.length;
+    return NextResponse.json({ overlaps, deletedRecords: 0,
+      message: `${overlaps} overlapping attendance entries are counted once per linked member and service. Present evidence takes precedence over absent. All stored history is preserved. Use Member Roster to review and merge separate member records.` },
+    { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch { return NextResponse.json({ error: 'Attendance totals could not be checked.' }, { status: 503 }); }
 }
