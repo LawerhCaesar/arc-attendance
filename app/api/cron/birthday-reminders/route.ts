@@ -5,6 +5,7 @@ import { birthdayGreetingJobs, birthdaySmsContacts, birthdaySmsJobs, sendBirthda
 import { smsSettings } from '@/lib/integration-settings';
 import { fetchAllRows } from '@/lib/pagination';
 export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   if (!process.env.CRON_SECRET || request.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -33,6 +33,7 @@ yarn-error.log*
 !package.json
 !package-lock.json
 !tsconfig.json
+!vercel.json
 !next.config.js
 !postcss.config.js
 !tailwind.config.ts
