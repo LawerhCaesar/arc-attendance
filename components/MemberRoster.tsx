@@ -6,6 +6,7 @@ import { FELLOWSHIPS, matchFellowship } from '@/lib/fellowships';
 import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 import MemberEditSignIn from '@/components/MemberEditSignIn';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
+import UnassignedMemberPicker from '@/components/UnassignedMemberPicker';
 import { dateInAccra } from '@/lib/birthdays';
 import type { RosterAttendanceSummary } from '@/lib/roster-attendance';
 import { attendanceColorFilters as colorFilters, attendanceStyles } from '@/lib/attendance-presentation';
@@ -57,6 +58,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
   const [sortKey,setSortKey] = useState<RosterSortKey>('attendance');
   const [sortDirection,setSortDirection] = useState<'asc'|'desc'>('desc');
   const [showForm, setShowForm] = useState(false);
+  const [showUnassigned, setShowUnassigned] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [form, setForm] = useState<Omit<Member, 'id'>>(emptyForm());
   const [isSaving, setIsSaving] = useState(false);
@@ -386,7 +388,8 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
             <option value="all">All Fellowships</option>
             {fellowships.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
-          {!showArchived && <div className="flex gap-2">
+          {!showArchived && <div className="flex flex-wrap gap-2">
+            {fellowshipScope && <button type="button" onClick={() => setShowUnassigned(true)} className="rounded-lg border border-blue-700 px-5 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50">Add from Unassigned</button>}
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" id="excel-upload-roster" />
             <label htmlFor="excel-upload-roster" className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition cursor-pointer whitespace-nowrap flex items-center justify-center">
               Import Database
@@ -401,6 +404,11 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600"><p aria-live="polite">Showing {filtered.length} of {members.length} members · Sorted by {rosterColumns.find(column=>column.key===sortKey)?.label.toLowerCase()} ({sortDirection==='asc'?'ascending':'descending'})</p>{(sortKey!=='attendance'||sortDirection!=='desc')&&<button type="button" onClick={()=>{setSortKey('attendance');setSortDirection('desc');}} className="font-semibold text-blue-800 underline">Reset to color order</button>}</div>
       </div>
+
+      {showUnassigned && fellowshipScope && <UnassignedMemberPicker fellowship={fellowshipScope} onClose={() => setShowUnassigned(false)} onAssigned={() => {
+        setRosterStatus('all'); setSearch(''); setColorFilter('all'); setDesignationFilter('all');
+        void fetchMembers(); onRosterChanged?.();
+      }} />}
 
       {/* Add / Edit modal */}
       {showForm && (

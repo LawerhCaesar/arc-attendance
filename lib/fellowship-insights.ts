@@ -54,7 +54,7 @@ export function fellowshipAttendanceReport(members: HistoryMemberInput[], rows: 
   const histories = new Map<string, Map<string, 'present' | 'absent'>>();
   let unlinkedRecords = 0;
   for (const row of excludeArchivedAttendance(rows, members)) {
-    if (row.fellowship !== fellowship) continue;
+    if (row.fellowship !== fellowship && !(row.fellowship === 'Unassigned' && row.member_id && byId.has(row.member_id))) continue;
     const date = row.attendanceDate || row.date;
     if (!validServiceDate(date) || date > today || !['', 'present', 'absent'].includes(row.attendanceStatus || '')) continue;
     let member = row.member_id ? byId.get(row.member_id) : undefined;
