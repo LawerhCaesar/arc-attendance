@@ -10,6 +10,7 @@ export interface BsctGroup {
   number: number;
   leader_member_id: string | null;
 }
+export interface FellowshipStructureData { cells: FellowshipCell[]; bsctGroups: BsctGroup[] }
 
 export interface StructureMember {
   id: string;

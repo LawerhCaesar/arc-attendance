@@ -3,8 +3,7 @@ import { requireMemberAccess, memberApiFailure } from '@/lib/member-api';
 import { assertFellowshipAccess, MemberInputError, memberFellowshipScope, memberUuid } from '@/lib/member-scope';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { fetchAllRows } from '@/lib/pagination';
-import type { FellowshipCell, BsctGroup } from '@/lib/fellowship-structure';
+import { loadFellowshipStructure } from '@/lib/fellowship-structure-source';
 
 export async function GET() {
   try {
@@ -12,16 +11,7 @@ export async function GET() {
     const admin = getSupabaseAdmin();
     if (!admin) throw new MemberInputError('Fellowship management requires server configuration.', 503);
     const scope = memberFellowshipScope(context);
-    let query = admin.from('fellowship_cells').select('id, fellowship, number, leader_member_id');
-    if (scope) query = query.eq('fellowship', scope);
-    const cells = await fetchAllRows<FellowshipCell>((from, to) => query.order('fellowship').order('number').order('id').range(from, to));
-    const bsctGroups: BsctGroup[] = [];
-    for (let offset = 0; offset < cells.length; offset += 100) {
-      const ids = cells.slice(offset, offset + 100).map(cell => cell.id);
-      bsctGroups.push(...await fetchAllRows<BsctGroup>((from, to) => admin.from('fellowship_bsct_groups')
-        .select('id, cell_id, number, leader_member_id').in('cell_id', ids).order('number').order('id').range(from, to)));
-    }
-    return NextResponse.json({ cells, bsctGroups }, { headers: { 'Cache-Control': 'private, no-store' } });
+    return NextResponse.json(await loadFellowshipStructure(admin, scope), { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) { return memberApiFailure(error); }
 }
 

@@ -20,6 +20,7 @@ import AccessManagement from '@/components/AccessManagement';
 import WelfareBirthdayCenter from '@/components/WelfareBirthdayCenter';
 import PastoralWeekly from '@/components/PastoralWeekly';
 import BulkSms from '@/components/BulkSms';
+import FellowshipStructureWorkspace from '@/components/FellowshipStructureWorkspace';
 type AdminTab = DashboardTab;
 
 const tabs: { id: AdminTab; label: string; icon: string }[] = [
@@ -32,6 +33,7 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
   { id: 'first-timers',         label: 'First Timers',      icon: '🆕' },
   { id: 'fellowship-services',  label: 'By Fellowship',     icon: '🏛️' },
   { id: 'members',              label: 'Member Roster',     icon: '📋' },
+  { id: 'fellowship-structure',  label: 'Cells & BSCTs',     icon: '🏘️' },
   { id: 'raw-data',             label: 'Raw Data',          icon: '🗃️' },
   { id: 'welfare',              label: 'Welfare / Birthdays', icon: '🎂' },
   { id: 'users',                label: 'Users & Roles',     icon: '🔐' },
@@ -46,6 +48,7 @@ const tabs: { id: AdminTab; label: string; icon: string }[] = [
 function visibleTabs(role: string, permissions: string[]) {
   return tabs.filter(tab => {
     if (tab.id === 'bulk-sms') return role === 'admin';
+    if (tab.id === 'fellowship-structure') return role === 'fellowship_leader' && permissions.includes('members');
     if (tab.id === 'care' && role === 'fellowship_leader') return permissions.includes('members');
     if (tab.id === 'fellowship-birthdays') return role === 'fellowship_leader' && permissions.includes('members');
     if (tab.id === 'fellowship-attendance') return role === 'fellowship_leader' ? permissions.includes('members') : permissions.includes('fellowship-services');
@@ -120,6 +123,7 @@ export default function AdminDashboard() {
         {sessionRole === 'fellowship_leader' && activeTab === 'fellowship-birthdays' && <FellowshipBirthdays key={fellowshipScope} />}
         {activeTab === 'fellowship-attendance' && <FellowshipAttendanceHistory key={fellowshipScope} canChooseFellowship={sessionRole !== 'fellowship_leader'} />}
         {activeTab === 'sunday-projections' && <SundayAttendanceProjections key={`${sessionRole}-${fellowshipScope || 'all'}`} />}
+        {activeTab === 'fellowship-structure' && fellowshipScope && <FellowshipStructureWorkspace key={fellowshipScope} fellowship={fellowshipScope} onRosterChanged={() => setRosterVersion(value => value + 1)} />}
 
         { activeTab === 'past-entry' && (
           <div>

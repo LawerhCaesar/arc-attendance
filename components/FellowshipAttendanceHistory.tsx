@@ -9,6 +9,7 @@ import CallMemberButton from './CallMemberButton';
 import { AttendanceColorGuide, MemberAttendanceBadge } from './MemberAttendanceColor';
 import { attendanceStyles } from '@/lib/attendance-presentation';
 import { matchesRosterColor, rosterMemberColor, type RosterColorFilter } from '@/lib/roster-view';
+import { cellAttendanceBreakdown, matchesCellAttendance } from '@/lib/cell-attendance';
 
 const dateLabel = (date: string) => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 function recentStart() { const date = new Date(`${dateInAccra()}T00:00:00Z`); date.setUTCDate(date.getUTCDate() - 90); return date.toISOString().slice(0, 10); }
@@ -18,16 +19,19 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
   const [start, setStart] = useState(recentStart);
   const [end, setEnd] = useState(dateInAccra);
   const [memberId, setMemberId] = useState('all');
+  const [cellId, setCellId] = useState('all');
+  const [bsctId, setBsctId] = useState('all');
   const [search, setSearch] = useState('');
   const [colorFilter,setColorFilter] = useState<RosterColorFilter>('all');
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const Chart = chartType === 'line' ? LineChart : BarChart;
   const invalidRange = Boolean(start && end && start > end);
   const visibleMembers = useMemo(() => (data?.members || []).filter(member =>
-    !member.archived && matchesRosterColor(member,data?.attendanceSummary||null,colorFilter) && (memberId === 'all' || member.id === memberId) && member.name.toLowerCase().includes(search.trim().toLowerCase()))
+    !member.archived && matchesCellAttendance(member, data?.structure || {cells:[],bsctGroups:[]}, cellId, bsctId) && matchesRosterColor(member,data?.attendanceSummary||null,colorFilter) && (memberId === 'all' || member.id === memberId) && member.name.toLowerCase().includes(search.trim().toLowerCase()))
     .map(member => ({ ...member, history: member.history.filter(row => (!start || row.date >= start) && (!end || row.date <= end)) }))
     .sort((a,b)=>(data?.attendanceSummary?.members[b.id]?.attended??-1)-(data?.attendanceSummary?.members[a.id]?.attended??-1)||a.name.localeCompare(b.name)),
-  [data, start, end, memberId, search, colorFilter]);
+  [data, start, end, memberId, search, colorFilter, cellId, bsctId]);
+  const cellBreakdown = useMemo(() => cellAttendanceBreakdown(visibleMembers, data?.structure || {cells:[],bsctGroups:[]}), [visibleMembers, data]);
   const services = useMemo(() => {
     const dates = new Map<string, { date: string; present: number; absent: number }>();
     for (const member of visibleMembers) for (const row of member.history) {
@@ -44,7 +48,9 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
     <AttendanceColorGuide summary={data?.attendanceSummary} value={colorFilter} onChange={setColorFilter}/>
     <section aria-label="Attendance filters" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-end gap-3">
-        {canChooseFellowship && <label className="text-sm font-medium text-gray-700">Fellowship<select value={fellowship} onChange={event => { setFellowship(event.target.value); setMemberId('all'); setSearch(''); }} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2">{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>}
+        {canChooseFellowship && <label className="text-sm font-medium text-gray-700">Fellowship<select value={fellowship} onChange={event => { setFellowship(event.target.value); setMemberId('all'); setCellId('all'); setBsctId('all'); setSearch(''); }} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2">{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>}
+        <label className="text-sm font-medium text-gray-700">Cell<select value={cellId} onChange={event => { setCellId(event.target.value); setBsctId('all'); setMemberId('all'); }} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2"><option value="all">All cells</option><option value="unassigned">No cell assigned</option>{data?.structure?.cells.map(cell => <option key={cell.id} value={cell.id}>Cell {cell.number}</option>)}</select></label>
+        <label className="text-sm font-medium text-gray-700">BSCT group<select value={bsctId} onChange={event => { setBsctId(event.target.value); setMemberId('all'); }} className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2"><option value="all">All BSCT groups</option><option value="unassigned">No BSCT assigned</option>{data?.structure?.bsctGroups.filter(group => cellId === 'all' || group.cell_id === cellId).map(group => <option key={group.id} value={group.id}>Cell {data.structure?.cells.find(cell => cell.id === group.cell_id)?.number} · BSCT {group.number}</option>)}</select></label>
         <label className="text-sm font-medium text-gray-700">From<input type="date" value={start} max={end || data?.today} onChange={event => setStart(event.target.value)} className="mt-1 block rounded-lg border border-gray-300 px-3 py-2" /></label>
         <label className="text-sm font-medium text-gray-700">To<input type="date" value={end} min={start} max={data?.today} onChange={event => setEnd(event.target.value)} className="mt-1 block rounded-lg border border-gray-300 px-3 py-2" /></label>
         <button onClick={() => { setStart(''); setEnd(data?.today || dateInAccra()); }} className="rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800">All history</button>
@@ -56,6 +62,16 @@ export default function FellowshipAttendanceHistory({ canChooseFellowship = fals
     </section>
     {loading ? <p role="status" className="py-8 text-gray-600">Loading attendance history…</p> : data && !error && !invalidRange && <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[['Brethren', visibleMembers.length], ['Services with records', services.length], ['Present entries', present], ['Absent entries', absent]].map(([label, value]) => <div key={label} className="rounded-xl border border-gray-200 bg-white p-4"><p className="text-sm text-gray-600">{label}</p><p className="mt-1 text-2xl font-bold text-gray-950">{value}</p></div>)}</div>
+      <section aria-label="Cell attendance breakdown" className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="font-bold text-gray-950">Attendance by cell &amp; BSCT</h3><p className="mt-1 text-sm text-gray-600">Uses current cell assignments and the filters above. Present and absent entries are counted once per member per service. Missing check-ins are not assumed absent.</p>
+        <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-gray-600"><tr>{['Cell / BSCT','Brethren','Present entries','Absent entries','Services with records'].map(label => <th key={label} className="px-3 py-2">{label}</th>)}</tr></thead>
+          <tbody>{cellBreakdown.cells.flatMap(cell => [{key:cell.id,label:`Cell ${cell.number}`,nested:false,...cell},
+            ...cell.groups.map(group => ({key:group.id,label:`BSCT ${group.number}`,nested:true,...group})),
+            {key:`${cell.id}-unassigned`,label:'No BSCT assigned',nested:true,...cell.unassigned}])
+            .concat([{key:'unassigned',label:'No cell assigned',nested:false,...cellBreakdown.unassigned}])
+            .map(row => <tr key={row.key} className={`border-t border-gray-100 ${row.nested ? 'text-gray-700' : 'bg-blue-50/50 font-semibold text-gray-950'}`}><th scope="row" className={`py-3 pr-3 text-left ${row.nested ? 'pl-7 font-normal' : 'pl-3'}`}>{row.label}</th><td className="px-3 py-3">{row.brethren}</td><td className="px-3 py-3">{row.present}</td><td className="px-3 py-3">{row.absent}</td><td className="px-3 py-3">{row.services}</td></tr>)}</tbody>
+        </table></div>
+      </section>
       <section aria-label="Attendance graph" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h3 className="font-bold text-gray-950">Attendance by service</h3><p className="mt-1 text-sm text-gray-600">The graph follows the filters above. Exact counts are listed below.</p></div>

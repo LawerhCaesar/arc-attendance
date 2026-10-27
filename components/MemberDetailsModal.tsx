@@ -6,6 +6,7 @@ import { FELLOWSHIPS } from '@/lib/fellowships';
 import DismissibleBanner from './DismissibleBanner';
 import MemberEditSignIn from './MemberEditSignIn';
 import ProfilePhotoUpload from './ProfilePhotoUpload';
+import MemberStructureFields from './MemberStructureFields';
 
 interface Props {
   memberId: string;
@@ -13,7 +14,7 @@ interface Props {
   onSaved: (member: Member) => void;
 }
 const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100';
-const designations = ['Fellowship Leader', 'Member'];
+const designations = ['Fellowship Leader', 'Cell Leader', 'BSCT Leader', 'Member'];
 
 export default function MemberDetailsModal({ memberId, onClose, onSaved }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -98,6 +99,7 @@ export default function MemberDetailsModal({ memberId, onClose, onSaved }: Props
             {!designations.includes(form.designation) && <option>{form.designation}</option>}
             {designations.map(name => <option key={name}>{name}</option>)}
           </select></label>
+          <MemberStructureFields fellowship={form.fellowship} cellId={form.cell_id} bsctGroupId={form.bsct_group_id} disabled={saving} onChange={values => setForm({ ...form, ...values })} />
         </fieldset>
         <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-4"><button type="button" disabled={saving} onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button><button type="submit" disabled={saving || needsSignIn} className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button></div>
       </form>}

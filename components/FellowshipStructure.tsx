@@ -21,7 +21,7 @@ function LeaderPicker({ label, leaderId, members, disabled, onSave }: {
   const [selected, setSelected] = useState(leaderId || '');
   return <div className="flex flex-wrap items-end gap-2">
     <label className="min-w-0 flex-1 text-xs font-semibold text-gray-600">{label}
-      <select value={selected} disabled={disabled} onChange={event => setSelected(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white p-2 text-sm font-normal text-gray-900">
+      <select aria-label={label} value={selected} disabled={disabled} onChange={event => setSelected(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white p-2 text-sm font-normal text-gray-900">
         <option value="">No leader assigned</option>
         {members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}
       </select>
@@ -62,7 +62,7 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 id="fellowship-structure-heading" className="text-lg font-bold text-gray-900">Cells &amp; BSCT Groups</h3>
-        <p className="mt-1 text-sm text-gray-600">{fellowship} · {brethren.length} brethren · {breakdown.cells.length} cells</p>
+        <p className="mt-1 text-sm text-gray-600">{fellowship} · {brethren.length} brethren · {breakdown.cells.length} {breakdown.cells.length === 1 ? 'cell' : 'cells'}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {!fellowshipScope && <select aria-label="Fellowship for cell breakdown" value={chosenFellowship} disabled={disabled} onChange={event => setChosenFellowship(event.target.value)} className="rounded-lg border border-gray-300 bg-white p-2 text-sm">{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select>}

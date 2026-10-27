@@ -3,6 +3,7 @@ import { nextBirthday } from './birthdays';
 import { normalizeDuplicatePhone } from './member-duplicates';
 import { excludeArchivedAttendance } from './archived-attendance';
 import type { RosterAttendanceSummary } from './roster-attendance';
+import type { FellowshipStructureData } from './fellowship-structure';
 
 export function fellowshipBirthdayDirectory(members: { id: string; name: string; phone?: string | null; birthday?: string | null }[], today: string) {
   return members.map(member => {
@@ -19,16 +20,19 @@ export interface FellowshipHistoryMember {
   name: string;
   phone: string;
   archived: boolean;
+  cell_id?: string | null;
+  bsct_group_id?: string | null;
   history: { date: string; status: 'present' | 'absent' }[];
 }
 export interface FellowshipAttendanceReport {
   attendanceSummary?: RosterAttendanceSummary;
+  structure?: FellowshipStructureData;
   fellowship: string;
   today: string;
   members: FellowshipHistoryMember[];
   unlinkedRecords: number;
 }
-export type HistoryMemberInput = Pick<Member, 'id' | 'name' | 'phone' | 'fellowship' | 'is_active' | 'merged_into_id'>;
+export type HistoryMemberInput = Pick<Member, 'id' | 'name' | 'phone' | 'fellowship' | 'is_active' | 'merged_into_id' | 'cell_id' | 'bsct_group_id'>;
 export type HistoryAttendanceInput = Pick<AttendanceRecord, 'id' | 'member_id' | 'name' | 'phone' | 'fellowship' | 'date' | 'attendanceDate' | 'attendanceStatus'>;
 export function validServiceDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) &&
@@ -74,7 +78,7 @@ export function fellowshipAttendanceReport(members: HistoryMemberInput[], rows: 
     histories.set(member.id!, history);
   }
   return { fellowship, today, unlinkedRecords, members: roster.map(member => ({
-    id: member.id!, name: member.name, phone: member.phone || '', archived: member.is_active === false,
+    id: member.id!, name: member.name, phone: member.phone || '', archived: member.is_active === false, cell_id: member.cell_id || null, bsct_group_id: member.bsct_group_id || null,
     history: [...(histories.get(member.id!) || [])].map(([date, status]) => ({ date, status })).sort((a, b) => b.date.localeCompare(a.date)),
   })).sort((a, b) => a.name.localeCompare(b.name)) };
 }

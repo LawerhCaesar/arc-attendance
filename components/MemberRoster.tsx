@@ -7,6 +7,7 @@ import MemberDuplicateReview from '@/components/MemberDuplicateReview';
 import MemberEditSignIn from '@/components/MemberEditSignIn';
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload';
 import UnassignedMemberPicker from '@/components/UnassignedMemberPicker';
+import MemberStructureFields from '@/components/MemberStructureFields';
 import { dateInAccra } from '@/lib/birthdays';
 import type { RosterAttendanceSummary } from '@/lib/roster-attendance';
 import { attendanceColorFilters as colorFilters, attendanceStyles } from '@/lib/attendance-presentation';
@@ -25,7 +26,7 @@ interface Member {
   is_active?: boolean;
 }
 
-const DESIGNATIONS = ['Fellowship Leader', 'Member'] as const;
+const DESIGNATIONS = ['Fellowship Leader', 'Cell Leader', 'BSCT Leader', 'Member'] as const;
 const rosterColumns: {key:RosterSortKey;label:string}[] = [
   {key:'name',label:'Name'},{key:'attendance',label:'Attendance'},{key:'phone',label:'Phone'},
   {key:'fellowship',label:'Fellowship'},{key:'designation',label:'Designation'},{key:'birthday',label:'Birthday'},{key:'location',label:'Location'},
@@ -473,6 +474,7 @@ export default function MemberRoster({ canReviewDuplicates = false, fellowshipSc
               </div>
             </div>
 
+            <div className="mt-4"><MemberStructureFields fellowship={form.fellowship} cellId={form.cell_id} bsctGroupId={form.bsct_group_id} disabled={isSaving} onChange={values => setForm(current => ({ ...current, ...values }))} /></div>
             {editingMember && <div className="mt-5"><ProfilePhotoUpload name={form.name} memberId={editingMember.id} /></div>}
             <div className="mt-5 flex gap-3 justify-end">
               <button
