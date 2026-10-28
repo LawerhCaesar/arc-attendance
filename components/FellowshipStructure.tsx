@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fellowshipBreakdown, type FellowshipCell, type BsctGroup, type StructureMember } from '@/lib/fellowship-structure';
 import DismissibleBanner from './DismissibleBanner';
+import BulkStructureAssignment from './BulkStructureAssignment';
+import StructureDeleteDialog, { type StructureDeletion } from './StructureDeleteDialog';
 
 interface Props {
   members: (StructureMember & { designation: string })[];
@@ -35,6 +37,8 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [deleting, setDeleting] = useState<StructureDeletion | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const disabled = busy || loading;
   const fellowship = fellowshipScope || chosenFellowship;
   const brethren = members.filter(member => member.fellowship === fellowship);
@@ -52,6 +56,32 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
       await onChanged();
       setNotice(id ? 'Leader assignment saved.' : `${kind === 'cell' ? 'Cell' : 'BSCT'} ${result.number} created.`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to save this group.'); }
+    finally { setBusy(false); }
+  };
+  const assign = async (memberIds: string[], cellId: string, bsctGroupId: string | null) => {
+    if (disabled) return false;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/members/structure/assign', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fellowship, memberIds, cellId, bsctGroupId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to assign these brethren.');
+      await onChanged();
+      setNotice(`${result.assigned} ${result.assigned === 1 ? 'member assigned' : 'brethren assigned'} successfully.`);
+      return true;
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to assign these brethren.'); return false; }
+    finally { setBusy(false); }
+  };
+  const remove = async () => {
+    if (disabled || !deleting) return;
+    setBusy(true); setDeleteError(''); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/members/structure', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fellowship, kind: deleting.kind, id: deleting.id }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to delete this group.');
+      setDeleting(null);
+      await onChanged();
+      setNotice(`${deleting.label} deleted. Brethren and attendance records were kept.`);
+    } catch (caught) { setDeleteError(caught instanceof Error ? caught.message : 'Unable to delete this group.'); }
     finally { setBusy(false); }
   };
   const memberList = (list: StructureMember[]) => <ul className="max-h-48 space-y-1 overflow-y-auto">
@@ -72,6 +102,7 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
     <p className="text-xs leading-5 text-gray-500">Select a brother or sister to edit their details and assign their cell and BSCT group. Assigning a leader also places them in that cell or group and sets their designation.</p>
     {error && <DismissibleBanner role="alert" onDismiss={() => setError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</DismissibleBanner>}
     {notice && <DismissibleBanner onDismiss={() => setNotice('')} className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</DismissibleBanner>}
+    <BulkStructureAssignment key={fellowship} members={brethren} cells={breakdown.cells} groups={bsctGroups.filter(group => breakdown.cells.some(cell => cell.id === group.cell_id))} disabled={disabled} onAssign={assign} />
     <details className="rounded-lg border border-amber-200 bg-amber-50 p-3">
       <summary className="cursor-pointer text-sm font-semibold text-amber-900">Not assigned to a cell ({breakdown.unassigned.length})</summary>
       <div className="mt-3">{memberList(breakdown.unassigned)}</div>
@@ -79,17 +110,18 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
     {!breakdown.cells.length && <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">Create Cell 1 to start organizing this fellowship. New cells are numbered automatically.</p>}
     <div className="grid items-start gap-4 lg:grid-cols-2">
       {breakdown.cells.map(cell => <article key={cell.id} className="space-y-4 rounded-xl border border-gray-200 p-4">
-        <div className="flex items-center justify-between gap-2"><h4 className="font-bold text-gray-900">Cell {cell.number}</h4><span className="text-xs text-gray-500">{cell.members.length} brethren · {cell.groups.length} BSCT groups</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold text-gray-900">Cell {cell.number}</h4><span className="text-xs text-gray-500">{cell.members.length} brethren · {cell.groups.length} BSCT groups</span><button type="button" disabled={disabled} aria-label={`Delete Cell ${cell.number}`} onClick={() => { setDeleteError(''); setDeleting({kind:'cell',id:cell.id,label:`Cell ${cell.number}`,brethren:cell.members.length,groups:cell.groups.length}); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Delete cell</button></div>
         <LeaderPicker key={`${cell.id}-${cell.leader_member_id}`} label={`Cell ${cell.number} leader`} leaderId={cell.leader_member_id} members={brethren} disabled={disabled} onSave={id => save('cell', undefined, cell.id, id)} />
         <details className="rounded-lg bg-gray-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-gray-700">All cell members ({cell.members.length})</summary><div className="mt-2">{memberList(cell.members)}</div></details>
         <details className="rounded-lg bg-amber-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-amber-900">Not assigned to a BSCT group ({cell.unassigned.length})</summary><div className="mt-2">{memberList(cell.unassigned)}</div></details>
         {cell.groups.map(group => <div key={group.id} className="space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
-          <h5 className="text-sm font-bold text-indigo-950">BSCT {group.number} <span className="font-normal text-gray-500">· {group.members.length} brethren</span></h5>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h5 className="text-sm font-bold text-indigo-950">BSCT {group.number} <span className="font-normal text-gray-500">· {group.members.length} brethren</span></h5><button type="button" disabled={disabled} aria-label={`Delete Cell ${cell.number}, BSCT ${group.number}`} onClick={() => { setDeleteError(''); setDeleting({kind:'bsct',id:group.id,label:`Cell ${cell.number} · BSCT ${group.number}`,brethren:group.members.length,groups:0}); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Delete BSCT</button></div>
           <LeaderPicker key={`${group.id}-${group.leader_member_id}`} label={`Cell ${cell.number}, BSCT ${group.number} leader`} leaderId={group.leader_member_id} members={cell.members} disabled={disabled} onSave={id => save('bsct', cell.id, group.id, id)} />
           {memberList(group.members)}
         </div>)}
         <button type="button" disabled={disabled} onClick={() => save('bsct', cell.id)} className="rounded-lg bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 disabled:opacity-40">+ Create BSCT Group</button>
       </article>)}
     </div>
+    {deleting && <StructureDeleteDialog target={deleting} busy={busy} error={deleteError} onClose={() => setDeleting(null)} onConfirm={() => void remove()} />}
   </section>;
 }

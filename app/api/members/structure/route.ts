@@ -4,6 +4,7 @@ import { assertFellowshipAccess, MemberInputError, memberFellowshipScope, member
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { loadFellowshipStructure } from '@/lib/fellowship-structure-source';
+import { parseStructureDeletion } from '@/lib/structure-actions';
 
 export async function GET() {
   try {
@@ -36,3 +37,14 @@ async function save(request: NextRequest, editing: boolean) {
 }
 export async function POST(request: NextRequest) { return save(request, false); }
 export async function PATCH(request: NextRequest) { return save(request, true); }
+export async function DELETE(request: NextRequest) {
+  try {
+    const context = await requireMemberAccess();
+    const input = parseStructureDeletion(await request.json().catch(() => null), context);
+    const admin = getSupabaseAdmin();
+    if (!admin) throw new MemberInputError('Fellowship management requires server configuration.', 503);
+    const { data, error } = await admin.rpc('delete_fellowship_structure', input);
+    if (error) throw error;
+    return NextResponse.json(data);
+  } catch (error) { return memberApiFailure(error); }
+}
