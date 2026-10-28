@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { FELLOWSHIPS } from '@/lib/fellowships';
-import { fellowshipBreakdown, type FellowshipCell, type BsctGroup, type StructureMember } from '@/lib/fellowship-structure';
+import { fellowshipBreakdown, structureLeadershipRoles, type FellowshipCell, type BsctGroup, type StructureMember } from '@/lib/fellowship-structure';
 import DismissibleBanner from './DismissibleBanner';
 import BulkStructureAssignment from './BulkStructureAssignment';
 import StructureDeleteDialog, { type StructureDeletion } from './StructureDeleteDialog';
@@ -85,7 +85,7 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
     finally { setBusy(false); }
   };
   const memberList = (list: StructureMember[]) => <ul className="max-h-48 space-y-1 overflow-y-auto">
-    {list.map(member => <li key={member.id}><button type="button" disabled={disabled} onClick={() => onEditMember(member.id)} className="text-left text-sm text-blue-700 underline decoration-blue-200 hover:decoration-blue-700">{member.name}</button></li>)}
+    {list.map(member => <li key={member.id} className="py-1"><button type="button" disabled={disabled} onClick={() => onEditMember(member.id)} className="text-left text-sm text-blue-700 underline decoration-blue-200 hover:decoration-blue-700">{member.name}</button><p className="mt-0.5 text-xs text-gray-600">{structureLeadershipRoles(member,cells,bsctGroups).join(' · ')}</p></li>)}
   </ul>;
 
   return <section className="space-y-4 rounded-xl border border-blue-100 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="fellowship-structure-heading">
@@ -99,7 +99,8 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
         <button type="button" disabled={disabled} onClick={() => save('cell')} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">+ Create Cell</button>
       </div>
     </div>
-    <p className="text-xs leading-5 text-gray-500">Select a brother or sister to edit their details and assign their cell and BSCT group. Assigning a leader also places them in that cell or group and sets their designation.</p>
+    <p className="text-sm leading-6 text-gray-700">Leadership roles can overlap. The roster keeps the highest designation: Fellowship Leader → Cell Leader → BSCT Leader → Member. Fellowship leaders default to Cell 1 and BSCT 1 where positions are unassigned; existing leader assignments are kept.</p>
+    <p className="text-xs leading-5 text-gray-600">Select a brother or sister to edit their details and assign their cell and BSCT group. Assigning a leader also places them in that cell or group.</p>
     {error && <DismissibleBanner role="alert" onDismiss={() => setError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</DismissibleBanner>}
     {notice && <DismissibleBanner onDismiss={() => setNotice('')} className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</DismissibleBanner>}
     <BulkStructureAssignment key={fellowship} members={brethren} cells={breakdown.cells} groups={bsctGroups.filter(group => breakdown.cells.some(cell => cell.id === group.cell_id))} disabled={disabled} onAssign={assign} />

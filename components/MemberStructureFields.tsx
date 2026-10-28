@@ -28,6 +28,6 @@ export default function MemberStructureFields({ fellowship, cellId, bsctGroupId,
         {groups.map(group => <option key={group.id} value={group.id}>BSCT {group.number}</option>)}
       </select>
     </label>
-    {loading ? <p className="text-xs text-gray-600">Loading cells and BSCT groups…</p> : error ? <p role="alert" className="text-sm text-red-800">{error} <button type="button" onClick={reload} className="font-semibold underline">Retry groups</button></p> : <p className="text-xs text-gray-600">Create cells and BSCT groups in the Cells &amp; BSCTs section.</p>}
+    {loading ? <p className="text-xs text-gray-600">Loading cells and BSCT groups…</p> : error ? <p role="alert" className="text-sm text-red-800">{error} <button type="button" onClick={reload} className="font-semibold underline">Retry groups</button></p> : <p className="text-xs text-gray-600">Create groups and manage leader assignments in Cells &amp; BSCTs. Leadership roles can overlap; the roster keeps the highest designation.</p>}
   </div>;
 }

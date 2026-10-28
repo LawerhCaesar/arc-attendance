@@ -18,6 +18,18 @@ export interface StructureMember {
   fellowship: string;
   cell_id?: string | null;
   bsct_group_id?: string | null;
+  designation?: string;
+}
+
+/** Leadership references are independent; the roster label is the highest role. */
+export function structureLeadershipRoles(member: StructureMember, cells: FellowshipCell[], groups: BsctGroup[]): string[] {
+  const ownCells = cells.filter(cell => cell.fellowship === member.fellowship);
+  const roles = [
+    ...(member.designation === 'Fellowship Leader' ? ['Fellowship Leader'] : []),
+    ...(member.designation === 'Cell Leader' || ownCells.some(cell => cell.id === member.cell_id && cell.leader_member_id === member.id) ? ['Cell Leader'] : []),
+    ...(member.designation === 'BSCT Leader' || groups.some(group => group.id === member.bsct_group_id && group.leader_member_id === member.id && ownCells.some(cell => cell.id === group.cell_id && cell.id === member.cell_id)) ? ['BSCT Leader'] : []),
+  ];
+  return roles.length ? roles : [member.designation || 'Member'];
 }
 
 export function fellowshipBreakdown(members: StructureMember[], cells: FellowshipCell[], groups: BsctGroup[], fellowship: string) {

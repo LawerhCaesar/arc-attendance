@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fellowshipBreakdown } from '../lib/fellowship-structure';
+import { fellowshipBreakdown, structureLeadershipRoles } from '../lib/fellowship-structure';
 import { assertFellowshipAccess, memberFellowshipScope, MemberInputError, parseMemberInput } from '../lib/member-scope';
 import { fellowshipLeaderUsername, isSuperAdmin } from '../lib/super-admin';
 
 const leader = { role: 'fellowship_leader', fellowship: 'Shalach' };
 const valid = { name: 'Ama Mensah', phone: '0241234567', fellowship: 'Shalach', designation: 'Member', birthday: '02-10', location: 'Accra' };
+
+test('independent leadership assignments display all simultaneous roles in highest-first order', () => {
+  const person = {id:'a',name:'Ama',fellowship:'Shalach',cell_id:'cell',bsct_group_id:'bsct',designation:'Fellowship Leader'};
+  const cells = [{id:'cell',fellowship:'Shalach',number:1,leader_member_id:'a'}];
+  const groups = [{id:'bsct',cell_id:'cell',number:1,leader_member_id:'a'}];
+  assert.deepEqual(structureLeadershipRoles(person,cells,groups),['Fellowship Leader','Cell Leader','BSCT Leader']);
+  assert.deepEqual(structureLeadershipRoles({...person,designation:'Cell Leader'},cells,groups),['Cell Leader','BSCT Leader']);
+  assert.deepEqual(structureLeadershipRoles({...person,designation:'Member'},cells,groups),['Cell Leader','BSCT Leader']);
+  assert.deepEqual(structureLeadershipRoles({...person,designation:'Member'},[{...cells[0],fellowship:'Pleroma'}],groups),['Member']);
+});
 
 test('fellowship leader scope is required and cannot come from request data', () => {
   assert.equal(memberFellowshipScope(leader), 'Shalach');
