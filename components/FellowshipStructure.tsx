@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fellowshipBreakdown, structureLeadershipRoles, type FellowshipCell, type BsctGroup, type StructureMember } from '@/lib/fellowship-structure';
 import DismissibleBanner from './DismissibleBanner';
@@ -39,6 +39,19 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
   const [notice, setNotice] = useState('');
   const [deleting, setDeleting] = useState<StructureDeletion | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [revealUnassigned, setRevealUnassigned] = useState<{kind:'cell'|'bsct';cellId:string} | null>(null);
+  const unassignedCells = useRef<HTMLDetailsElement>(null);
+  const unassignedBscts = useRef<Record<string,HTMLDetailsElement | null>>({});
+  useEffect(() => {
+    if (!revealUnassigned || loading) return;
+    const section = revealUnassigned.kind === 'cell' ? unassignedCells.current : unassignedBscts.current[revealUnassigned.cellId] || unassignedCells.current;
+    if (section) {
+      section.open = true;
+      section.scrollIntoView({behavior:'smooth',block:'center'});
+      section.querySelector('summary')?.focus({preventScroll:true});
+    }
+    setRevealUnassigned(null);
+  }, [revealUnassigned,loading]);
   const disabled = busy || loading;
   const fellowship = fellowshipScope || chosenFellowship;
   const brethren = members.filter(member => member.fellowship === fellowship);
@@ -80,7 +93,8 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
       if (!response.ok) throw new Error(result.error || 'Unable to delete this group.');
       setDeleting(null);
       await onChanged();
-      setNotice(`${deleting.label} deleted. Brethren and attendance records were kept.`);
+      setNotice(`${deleting.label} deleted. ${result.unassigned} ${result.unassigned === 1 ? 'member moved' : 'brethren moved'} to ${deleting.kind === 'cell' ? 'Unassigned to a cell' : 'Unassigned to a BSCT group in their current cell'}. Everyone stays in this fellowship with their personal details and attendance records.`);
+      setRevealUnassigned({kind:deleting.kind,cellId:deleting.cellId});
     } catch (caught) { setDeleteError(caught instanceof Error ? caught.message : 'Unable to delete this group.'); }
     finally { setBusy(false); }
   };
@@ -104,19 +118,19 @@ export default function FellowshipStructure({ members, cells, bsctGroups, fellow
     {error && <DismissibleBanner role="alert" onDismiss={() => setError('')} className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</DismissibleBanner>}
     {notice && <DismissibleBanner onDismiss={() => setNotice('')} className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</DismissibleBanner>}
     <BulkStructureAssignment key={fellowship} members={brethren} cells={breakdown.cells} groups={bsctGroups.filter(group => breakdown.cells.some(cell => cell.id === group.cell_id))} disabled={disabled} onAssign={assign} />
-    <details className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-      <summary className="cursor-pointer text-sm font-semibold text-amber-900">Not assigned to a cell ({breakdown.unassigned.length})</summary>
+    <details ref={unassignedCells} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-amber-900">Unassigned to a cell ({breakdown.unassigned.length})</summary>
       <div className="mt-3">{memberList(breakdown.unassigned)}</div>
     </details>
     {!breakdown.cells.length && <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">Create Cell 1 to start organizing this fellowship. New cells are numbered automatically.</p>}
     <div className="grid items-start gap-4 lg:grid-cols-2">
       {breakdown.cells.map(cell => <article key={cell.id} className="space-y-4 rounded-xl border border-gray-200 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold text-gray-900">Cell {cell.number}</h4><span className="text-xs text-gray-500">{cell.members.length} brethren · {cell.groups.length} BSCT groups</span><button type="button" disabled={disabled} aria-label={`Delete Cell ${cell.number}`} onClick={() => { setDeleteError(''); setDeleting({kind:'cell',id:cell.id,label:`Cell ${cell.number}`,brethren:cell.members.length,groups:cell.groups.length}); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Delete cell</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold text-gray-900">Cell {cell.number}</h4><span className="text-xs text-gray-500">{cell.members.length} brethren · {cell.groups.length} BSCT groups</span><button type="button" disabled={disabled} aria-label={`Delete Cell ${cell.number}`} onClick={() => { setDeleteError(''); setDeleting({kind:'cell',id:cell.id,cellId:cell.id,label:`Cell ${cell.number}`,brethren:cell.members.length,groups:cell.groups.length}); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Delete cell</button></div>
         <LeaderPicker key={`${cell.id}-${cell.leader_member_id}`} label={`Cell ${cell.number} leader`} leaderId={cell.leader_member_id} members={brethren} disabled={disabled} onSave={id => save('cell', undefined, cell.id, id)} />
         <details className="rounded-lg bg-gray-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-gray-700">All cell members ({cell.members.length})</summary><div className="mt-2">{memberList(cell.members)}</div></details>
-        <details className="rounded-lg bg-amber-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-amber-900">Not assigned to a BSCT group ({cell.unassigned.length})</summary><div className="mt-2">{memberList(cell.unassigned)}</div></details>
+        <details ref={node => { unassignedBscts.current[cell.id] = node; }} className="rounded-lg bg-amber-50 p-3"><summary className="cursor-pointer text-sm font-semibold text-amber-900">Unassigned to a BSCT group ({cell.unassigned.length})</summary><div className="mt-2">{memberList(cell.unassigned)}</div></details>
         {cell.groups.map(group => <div key={group.id} className="space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2"><h5 className="text-sm font-bold text-indigo-950">BSCT {group.number} <span className="font-normal text-gray-500">· {group.members.length} brethren</span></h5><button type="button" disabled={disabled} aria-label={`Delete Cell ${cell.number}, BSCT ${group.number}`} onClick={() => { setDeleteError(''); setDeleting({kind:'bsct',id:group.id,label:`Cell ${cell.number} · BSCT ${group.number}`,brethren:group.members.length,groups:0}); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Delete BSCT</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h5 className="text-sm font-bold text-indigo-950">BSCT {group.number} <span className="font-normal text-gray-500">· {group.members.length} brethren</span></h5><button type="button" disabled={disabled} aria-label={`Delete Cell ${cell.number}, BSCT ${group.number}`} onClick={() => { setDeleteError(''); setDeleting({kind:'bsct',id:group.id,cellId:cell.id,label:`Cell ${cell.number} · BSCT ${group.number}`,brethren:group.members.length,groups:0}); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50">Delete BSCT</button></div>
           <LeaderPicker key={`${group.id}-${group.leader_member_id}`} label={`Cell ${cell.number}, BSCT ${group.number} leader`} leaderId={group.leader_member_id} members={cell.members} disabled={disabled} onSave={id => save('bsct', cell.id, group.id, id)} />
           {memberList(group.members)}
         </div>)}

@@ -20,6 +20,13 @@ begin
   if not exists(select 1 from fellowship_cells where id=c1.id and leader_member_id=a) or not exists(select 1 from fellowship_bsct_groups where id=g1.id and leader_member_id=a) or (select designation from members where id=a)<>'Fellowship Leader' then
     raise exception 'Lower-role saves or a details edit removed simultaneous leadership'; end if;
 
+  -- Deleting a default BSCT keeps its fellowship leader in the parent cell,
+  -- active and unassigned to a BSCT, without silently recreating the group.
+  perform delete_fellowship_structure(tag,'bsct',g1.id);
+  if not exists(select 1 from members where id=a and fellowship=tag and is_active and cell_id=c1.id and bsct_group_id is null and designation='Fellowship Leader' and location='Updated location') or
+    exists(select 1 from fellowship_bsct_groups where cell_id=c1.id) then raise exception 'Deleted BSCT did not leave its brethren safely unassigned within their cell'; end if;
+  g1 := save_fellowship_bsct_group(tag,c1.id,null,a);
+
   insert into members(id,name,fellowship) values(b,'Dual cell and BSCT leader',tag),(c,'Replacement leader',tag);
   c2 := save_fellowship_cell(tag,null,b);
   g2 := save_fellowship_bsct_group(tag,c2.id,null,b);
@@ -39,6 +46,9 @@ begin
   update members set location='Still in chosen cell' where id=a;
   perform app_private.ensure_fellowship_leader_defaults(a);
   if (select cell_id from members where id=a) is distinct from c2.id or (select designation from members where id=a)<>'Fellowship Leader' then raise exception 'A default overwrote an explicit membership or highest designation'; end if;
+  perform delete_fellowship_structure(tag,'cell',c2.id);
+  if not exists(select 1 from members where id=a and fellowship=tag and is_active and cell_id is null and bsct_group_id is null and designation='Fellowship Leader' and location='Still in chosen cell') then
+    raise exception 'Deleted cell removed, archived, transferred or reassigned its brethren instead of leaving them unassigned'; end if;
 
   -- New fellowship leaders join the default groups without replacing their heads.
   update members set fellowship=occupied,cell_id=null,bsct_group_id=null where id=b;
