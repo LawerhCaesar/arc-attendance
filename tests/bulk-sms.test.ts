@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bulkSmsRecipients, smsMessageInfo, validateSmsMessage } from '../lib/bulk-sms';
+import { bulkSmsRecipients, smsMessageInfo, standardSmsPunctuation, validateSmsMessage } from '../lib/bulk-sms';
 import { fetchSmsBalance, submitBulkSms } from '../lib/bulk-sms-provider';
 
 test('bulk audiences use active unmerged members, scope fellowships and deduplicate normalized contacts', () => {
@@ -30,6 +30,52 @@ test('SMS estimates account for GSM extensions, multipart boundaries and Unicode
   assert.equal(smsMessageInfo('').segments, 0);
   assert.equal(validateSmsMessage(' Hello brethren! '), 'Hello brethren!');
   for (const value of ['', ' ', 'a'.repeat(1601), '\u0000', 4]) assert.throws(() => validateSmsMessage(value));
+});
+
+test('standard punctuation avoids an unexpected jump from one standard SMS to three Unicode parts', () => {
+  const ordinary = `Hello brethren, ${'a'.repeat(124)}`;
+  assert.equal(ordinary.length, 140);
+  assert.equal(smsMessageInfo(`${ordinary}'`).segments, 1);
+  assert.equal(smsMessageInfo(`${ordinary}’`).segments, 3);
+  const prepared = standardSmsPunctuation(`${ordinary}’`);
+  assert.equal(prepared, `${ordinary}'`);
+  assert.equal(smsMessageInfo(prepared).type, 0);
+  assert.equal(smsMessageInfo(prepared).segments, 1);
+  assert.equal(standardSmsPunctuation('“Welcome”—it’s Sunday…\u00a0Akwaaba ɛ 🎂'), '"Welcome"-it\'s Sunday... Akwaaba ɛ 🎂');
+  assert.equal(standardSmsPunctuation('Gloire à Dieu! € ^ {} \\ [~] |'), 'Gloire à Dieu! € ^ {} \\ [~] |');
+});
+
+test('SMS counter exposes encoding reasons and respects full-character boundaries in multipart messages', () => {
+  const single = smsMessageInfo('a'.repeat(160));
+  assert.equal(single.remaining, 0);
+  assert.equal(single.singleLimit, 160);
+  assert.equal(smsMessageInfo('a'.repeat(161)).remaining, 145);
+  assert.equal(smsMessageInfo('a'.repeat(306)).segments, 2);
+  assert.equal(smsMessageInfo('a'.repeat(307)).segments, 3);
+  // An extension escape or UTF-16 surrogate pair cannot straddle parts.
+  assert.equal(smsMessageInfo('^'.repeat(153)).segments, 3);
+  assert.equal(smsMessageInfo('🎂'.repeat(67)).segments, 3);
+  assert.deepEqual(smsMessageInfo('ɛ ɛ🎂').unicodeCharacters, ['ɛ', '🎂']);
+  assert.equal(smsMessageInfo('ɛ'.repeat(134)).segments, 2);
+  assert.equal(smsMessageInfo('ɛ'.repeat(135)).segments, 3);
+});
+
+test('provider receives the exact prepared preview text and matching standard encoding', async () => {
+  const original = globalThis.fetch;
+  const message = validateSmsMessage(standardSmsPunctuation(`It’s Sunday! ${'a'.repeat(147)}`));
+  assert.equal(message.length, 160);
+  assert.equal(smsMessageInfo(message).segments, 1);
+  try {
+    globalThis.fetch = async (_url, options) => {
+      const body = JSON.parse(options!.body as string);
+      assert.equal(body.text, message);
+      assert.equal(body.type, 0);
+      return Response.json({ handshake: { id: 0, label: 'HSHK_OK' }, data: { destinations: [
+        { id: 'synthetic-id', to: '233201234567', status: { id: 2105, label: 'DS_SUBMIT_ENROUTE' } },
+      ] } });
+    };
+    assert.equal((await submitBulkSms(['+233201234567'], message, { apiKey: 'synthetic', sender: 'CEYC ARC' }))[0].status, 'accepted');
+  } finally { globalThis.fetch = original; }
 });
 
 test('provider submission preserves recipient-level rejection and uncertainty without retrying', async () => {

@@ -2,11 +2,29 @@ import { normalizeDuplicatePhone } from './member-duplicates';
 
 const GSM = new Set(Array.from('@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà'));
 const EXTENDED = new Set(Array.from('^{}\\[~]|€\f'));
+// Common phone/word-processor typography has a plain GSM equivalent. Keep
+// language-specific letters and emoji intact rather than losing their meaning.
+export function standardSmsPunctuation(text: string): string {
+  return text.replace(/[‘’‚‛]/g, "'").replace(/[“”„‟]/g, '"')
+    .replace(/[‐‑‒–—―−]/g, '-').replace(/…/g, '...')
+    .replace(/[\u00a0\u2007\u202f]/g, ' ');
+}
 export function smsMessageInfo(text: string) {
-  const unicode = Array.from(text).some(character => !GSM.has(character) && !EXTENDED.has(character));
-  const units = unicode ? text.length : Array.from(text).reduce((sum, character) => sum + (EXTENDED.has(character) ? 2 : 1), 0);
+  const characters = Array.from(text);
+  const unicodeCharacters = [...new Set(characters.filter(character => !GSM.has(character) && !EXTENDED.has(character)))];
+  const unicode = unicodeCharacters.length > 0;
+  const costs = characters.map(character => unicode ? character.length : EXTENDED.has(character) ? 2 : 1);
+  const units = costs.reduce((sum, cost) => sum + cost, 0);
   const single = unicode ? 70 : 160, multi = unicode ? 67 : 153;
-  return { encoding: unicode ? 'Unicode' : 'GSM-7', type: unicode ? 1 : 0, units, segments: units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / multi) };
+  let segments = units === 0 ? 0 : 1, used = 0;
+  if (units > single) {
+    for (const cost of costs) {
+      if (used + cost > multi) { segments++; used = 0; }
+      used += cost;
+    }
+  } else { used = units; }
+  return { encoding: unicode ? 'Unicode' : 'GSM-7', type: unicode ? 1 : 0, units, segments,
+    singleLimit: single, multipartLimit: multi, remaining: (units > single ? multi : single) - used, unicodeCharacters };
 }
 export function validateSmsMessage(value: unknown): string {
   if (typeof value !== 'string' || !value.trim() || value.length > 1600 || /[\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(value)) throw new Error('Enter a message of up to 1,600 characters without control characters.');

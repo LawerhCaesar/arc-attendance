@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { FELLOWSHIPS } from '@/lib/fellowships';
-import { smsMessageInfo, type BulkSmsCampaign, type BulkSmsRecipient } from '@/lib/bulk-sms';
+import { smsMessageInfo, standardSmsPunctuation, type BulkSmsCampaign, type BulkSmsRecipient } from '@/lib/bulk-sms';
 import type { SmsBalance } from '@/lib/bulk-sms-provider';
 
 type Preview = BulkSmsCampaign & { recipients?: BulkSmsRecipient[] };
@@ -14,6 +14,7 @@ export default function BulkSms() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [fellowship, setFellowship] = useState('all');
   const [message, setMessage] = useState('');
+  const [standardPunctuation, setStandardPunctuation] = useState(true);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -40,12 +41,14 @@ export default function BulkSms() {
   };
   const compose = () => { setPreview(null); setNotice(''); setError(''); };
   const audience = workspace?.audiences.find(item => item.fellowship === (fellowship === 'all' ? null : fellowship));
-  const info = smsMessageInfo(message.trim());
+  const outgoingMessage = (standardPunctuation ? standardSmsPunctuation(message) : message).trim();
+  const info = smsMessageInfo(outgoingMessage);
+  const punctuationChanged = standardPunctuation && outgoingMessage !== message.trim();
   const createPreview = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError(''); setNotice(''); setPreview(null);
     try {
       const response = await fetch('/api/admin/bulk-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'preview', id: crypto.randomUUID(), fellowship: fellowship === 'all' ? null : fellowship, message }) });
+        body: JSON.stringify({ action: 'preview', id: crypto.randomUUID(), fellowship: fellowship === 'all' ? null : fellowship, message: outgoingMessage }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
       setPreview(result);
@@ -85,9 +88,14 @@ export default function BulkSms() {
         <label className="block text-sm font-semibold text-gray-800">Send to<select value={fellowship} disabled={busy} onChange={event => { setFellowship(event.target.value); compose(); }} className={`${inputClass} mt-2`}><option value="all">Entire church</option>{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>
         <div className="rounded-xl bg-slate-50 p-4"><p className="text-lg font-bold text-gray-950">{audience ? audience.recipients.toLocaleString() : '—'} phone numbers</p><p className="mt-1 text-xs leading-5 text-gray-600">Active brethren only. Archived and merged records are excluded. Shared phone numbers receive one message.{audience ? ` ${audience.missingPhone} missing or invalid contacts; ${audience.duplicatePhone} repeated contacts excluded.` : ''}</p></div>
         <label className="block text-sm font-semibold text-gray-800">Message<textarea required rows={8} maxLength={1600} value={message} disabled={busy} onChange={event => { setMessage(event.target.value); compose(); }} placeholder="Write your church announcement…" className={`${inputClass} mt-2 resize-y font-normal`} /></label>
-        <div className="flex flex-wrap justify-between gap-2 text-xs text-gray-600"><span>{message.length}/1,600 characters · {info.encoding}</span><span>{info.segments} SMS {info.segments === 1 ? 'part' : 'parts'} per number</span></div>
+        <div aria-live="polite" className="flex flex-wrap justify-between gap-2 text-sm text-gray-700"><span>{outgoingMessage.length}/1,600 characters · {info.encoding}</span><span className="font-semibold text-gray-950">{info.segments} SMS {info.segments === 1 ? 'part' : 'parts'} per number</span></div>
+        <p className="text-xs leading-5 text-gray-600">{info.units} SMS units · {info.remaining} remaining in {info.segments > 1 ? 'the last part' : 'one part'}. One standard SMS holds 160 units; longer messages use 153 per part. Symbols such as € and ^ use two units.</p>
+        <label className="flex items-start gap-2 text-sm text-gray-800"><input type="checkbox" checked={standardPunctuation} disabled={busy} onChange={event => { setStandardPunctuation(event.target.checked); compose(); }} className="mt-1 h-4 w-4" /><span>Use standard punctuation to reduce SMS parts<span className="mt-1 block text-xs leading-5 text-gray-600">Converts smart quotes, dashes and special spaces to standard punctuation. The preview shows the exact text that will be sent.</span></span></label>
+        {punctuationChanged && <p role="status" className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">Standard punctuation will be used in your preview and delivered message.</p>}
+        {info.type === 1 && <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">Unicode characters detected: {info.unicodeCharacters.slice(0, 8).map(character => /\s|[\u200b-\u200f\ufeff]/u.test(character) ? `U+${character.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}` : `“${character}”`).join(', ')}{info.unicodeCharacters.length > 8 ? ', …' : ''}. These make the whole message Unicode: 70 units for one SMS, or 67 per part for longer messages. Emoji can use two units. Remove or replace these characters to use the standard 160-unit limit.</div>}
+        {outgoingMessage.length > 1600 && <p role="alert" className="text-sm text-red-800">The message exceeds 1,600 characters after punctuation conversion. Shorten it before previewing.</p>}
         <p className="text-sm text-gray-600">Sender: <strong className="text-gray-950">{workspace?.sender || 'CEYC ARC'}</strong></p>
-        <button disabled={busy || !workspace || !message.trim() || !audience?.recipients} className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Processing…' : 'Preview message'}</button>
+        <button disabled={busy || !workspace || !outgoingMessage || outgoingMessage.length > 1600 || !audience?.recipients} className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Processing…' : 'Preview message'}</button>
       </form>
       <section aria-label="Message preview" className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:p-6">
         <h3 className="text-lg font-bold text-gray-950">Review before sending</h3>
