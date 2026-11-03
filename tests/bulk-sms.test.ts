@@ -1,7 +1,33 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bulkSmsRecipients, smsMessageInfo, standardSmsPunctuation, validateSmsMessage } from '../lib/bulk-sms';
+import { SMS_PREVIEW_TTL_MS, bulkSmsRecipients, smsDraftIssue, smsMessageInfo, smsPreviewExpired, standardSmsPunctuation, validateSmsMessage } from '../lib/bulk-sms';
 import { fetchSmsBalance, submitBulkSms } from '../lib/bulk-sms-provider';
+
+test('drafts expire at 15 minutes and give a specific refresh reason before submission', () => {
+  const created = Date.parse('2026-11-03T08:56:10Z');
+  const recipients = [{ memberId: 'a', phone: '+233201234567', name: 'Test member', fellowship: 'Shalach' }];
+  const draft = { created_at: new Date(created).toISOString(), sender: 'CEYC ARC', recipients };
+  assert.equal(smsPreviewExpired(draft.created_at, created + SMS_PREVIEW_TTL_MS - 1), false);
+  assert.equal(smsPreviewExpired(draft.created_at, created + SMS_PREVIEW_TTL_MS), true);
+  assert.equal(smsDraftIssue(draft, recipients, draft.sender, created + 29 * 60000)?.code, 'PREVIEW_EXPIRED');
+  assert.equal(smsDraftIssue(draft, recipients, draft.sender, created + 60000), null);
+  assert.equal(smsDraftIssue(draft, recipients, 'NEW SENDER', created + 60000)?.code, 'SMS_SETTINGS_CHANGED');
+  assert.equal(smsDraftIssue(draft, [], draft.sender, created + 60000)?.code, 'AUDIENCE_CHANGED');
+  assert.equal(smsDraftIssue(draft, [{ ...recipients[0], phone: '+233241234567' }], draft.sender, created + 60000)?.code, 'AUDIENCE_CHANGED');
+  assert.equal(smsPreviewExpired('invalid', created), true);
+  const refreshed = { ...draft, created_at: new Date(created + 29 * 60000).toISOString() };
+  assert.equal(smsDraftIssue(refreshed, recipients, refreshed.sender, created + 30 * 60000), null);
+});
+
+test('draft recipient checks ignore ordering and display-only name changes', () => {
+  const recipients = [
+    { memberId: 'a', phone: '+233201234567', name: 'Test A', fellowship: 'Shalach' },
+    { memberId: 'b', phone: '+233241234567', name: 'Test B', fellowship: 'Shalach' },
+  ];
+  const now = Date.parse('2026-11-03T09:00:00Z');
+  const draft = { created_at: new Date(now).toISOString(), sender: 'CEYC ARC', recipients };
+  assert.equal(smsDraftIssue(draft, [...recipients].reverse().map(r => ({ ...r, name: 'Updated name' })), draft.sender, now), null);
+});
 
 test('bulk audiences use active unmerged members, scope fellowships and deduplicate normalized contacts', () => {
   const members = [

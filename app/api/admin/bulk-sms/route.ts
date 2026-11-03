@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { smsSettings } from '@/lib/integration-settings';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fetchAllRows } from '@/lib/pagination';
-import { bulkSmsRecipients, campaignColumns, SMS_BATCH_SIZE, smsMessageInfo, validateSmsMessage, type BulkSmsCampaign, type BulkSmsRecipient, type SmsOutcome, type SmsRosterMember } from '@/lib/bulk-sms';
+import { bulkSmsRecipients, campaignColumns, SMS_BATCH_SIZE, smsDraftIssue, smsMessageInfo, validateSmsMessage, type BulkSmsCampaign, type BulkSmsRecipient, type SmsOutcome, type SmsRosterMember } from '@/lib/bulk-sms';
 import { submitBulkSms } from '@/lib/bulk-sms-provider';
 
 export const dynamic = 'force-dynamic';
@@ -86,8 +86,8 @@ export async function POST(request: NextRequest) {
     if (!settings.apiKey || !settings.sender) return NextResponse.json({ error: 'The base administrator must complete SMSOnlineGH setup in Users & Roles before sending.' }, { status: 503 });
     const current = bulkSmsRecipients(members, campaign.fellowship).recipients;
     if (campaign.status === 'draft') {
-      const signature = (recipients: BulkSmsRecipient[]) => JSON.stringify(recipients.map(recipient => [recipient.memberId, recipient.phone]));
-      if (Date.now() - Date.parse(campaign.created_at) > 15 * 60 * 1000 || settings.sender !== campaign.sender || signature(current) !== signature(campaign.recipients)) return NextResponse.json({ error: 'The audience or SMS setup changed, or this preview expired. Preview again before sending.' }, { status: 409 });
+      const issue = smsDraftIssue(campaign, current, settings.sender);
+      if (issue) return NextResponse.json(issue, { status: 409, headers });
     }
     // One durable claim per batch. Overlapping requests cannot submit the same
     // destinations twice; interrupted/uncertain submissions require review.

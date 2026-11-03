@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FELLOWSHIPS } from '@/lib/fellowships';
-import { smsMessageInfo, standardSmsPunctuation, type BulkSmsCampaign, type BulkSmsRecipient } from '@/lib/bulk-sms';
+import { SMS_PREVIEW_TTL_MS, smsMessageInfo, smsPreviewExpired, standardSmsPunctuation, type BulkSmsCampaign, type BulkSmsRecipient } from '@/lib/bulk-sms';
 import type { SmsBalance } from '@/lib/bulk-sms-provider';
 
 type Preview = BulkSmsCampaign & { recipients?: BulkSmsRecipient[] };
 interface Workspace { configured: boolean; sender: string; history: BulkSmsCampaign[]; audiences: { fellowship: string | null; recipients: number; missingPhone: number; duplicatePhone: number }[] }
-const statusLabel = (campaign: BulkSmsCampaign) => ({ draft: 'Draft', ready: 'Partly submitted', sending: 'Sending / awaiting confirmation', completed: 'Submission complete', uncertain: 'Needs review' })[campaign.status];
+const statusLabel = (campaign: BulkSmsCampaign, now = Date.now()) => campaign.status === 'draft' ? smsPreviewExpired(campaign.created_at, now) ? 'Preview expired — not sent' : 'Draft — not sent' : ({ ready: 'Partly submitted', sending: 'Sending / awaiting confirmation', completed: 'Submission complete', uncertain: 'Needs review' })[campaign.status];
 const inputClass = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-950 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100';
 
 export default function BulkSms() {
@@ -16,6 +16,9 @@ export default function BulkSms() {
   const [message, setMessage] = useState('');
   const [standardPunctuation, setStandardPunctuation] = useState(true);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [now, setNow] = useState(Date.now);
+  const [sendFailure, setSendFailure] = useState<{ id: string; message: string; code?: string } | null>(null);
+  const previewSection = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -29,6 +32,11 @@ export default function BulkSms() {
     setWorkspace(result);
   }, []);
   useEffect(() => { void load().catch(error => setError(error.message)); }, [load]);
+  useEffect(() => {
+    if (preview?.status !== 'draft') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [preview?.id, preview?.status]);
   const checkBalance = async () => {
     setBalanceBusy(true); setBalanceError('');
     try {
@@ -39,35 +47,49 @@ export default function BulkSms() {
     } catch (error) { setBalanceError(error instanceof Error ? error.message : 'Balance unavailable.'); }
     finally { setBalanceBusy(false); }
   };
-  const compose = () => { setPreview(null); setNotice(''); setError(''); };
+  const compose = () => { setPreview(null); setNotice(''); setError(''); setSendFailure(null); };
   const audience = workspace?.audiences.find(item => item.fellowship === (fellowship === 'all' ? null : fellowship));
   const outgoingMessage = (standardPunctuation ? standardSmsPunctuation(message) : message).trim();
   const info = smsMessageInfo(outgoingMessage);
   const punctuationChanged = standardPunctuation && outgoingMessage !== message.trim();
-  const createPreview = async (event: React.FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(''); setNotice(''); setPreview(null);
+  const needsRefresh = preview?.status === 'draft' && (smsPreviewExpired(preview.created_at, now) || (sendFailure?.id === preview.id && ['PREVIEW_EXPIRED', 'SMS_SETTINGS_CHANGED', 'AUDIENCE_CHANGED'].includes(sendFailure.code || '')));
+  const createPreview = async () => {
+    setBusy(true); setError(''); setNotice(''); setSendFailure(null);
     try {
       const response = await fetch('/api/admin/bulk-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'preview', id: crypto.randomUUID(), fellowship: fellowship === 'all' ? null : fellowship, message: outgoingMessage }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      setPreview(result);
+      setNow(Date.now()); setPreview(result);
     } catch (error) { setError(error instanceof Error ? error.message : 'Preview could not be prepared.'); }
     finally { setBusy(false); }
   };
   const send = async (id: string) => {
-    setBusy(true); setError(''); setNotice('');
+    setBusy(true); setError(''); setNotice(''); setSendFailure(null);
+    let failureCode: string | undefined;
     try {
       let result: Preview;
       do {
         const response = await fetch('/api/admin/bulk-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send', id }) });
         result = await response.json();
-        if (!response.ok) throw new Error((result as unknown as { error: string }).error);
+        if (!response.ok) {
+          const failure = result as unknown as { error?: string; code?: string };
+          failureCode = failure.code;
+          throw new Error(failure.error || 'Sending failed. Refresh history before trying again.');
+        }
         setPreview(result);
       } while (result.status === 'ready');
       setNotice(`${result.accepted} accepted by SMSOnlineGH · ${result.rejected} rejected · ${result.uncertain} uncertain · ${result.skipped} skipped.`);
-    } catch (error) { setError(error instanceof Error ? error.message : 'Sending was interrupted. Refresh history before trying again.'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sending was interrupted. Refresh history before trying again.';
+      setError(message); setSendFailure({ id, message, code: failureCode }); setNow(Date.now());
+    }
     finally { setBusy(false); await load().catch(error => setError(error.message)); }
+  };
+  const openDraft = (campaign: BulkSmsCampaign) => {
+    setMessage(campaign.message); setFellowship(campaign.fellowship || 'all'); setStandardPunctuation(false);
+    setNow(Date.now()); setPreview(campaign); setError(''); setNotice(''); setSendFailure(null);
+    previewSection.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   return <div className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -83,7 +105,7 @@ export default function BulkSms() {
       <p className="w-full text-xs text-gray-500">Purchases open SMSOnlineGH in a new tab. After topping up the account connected to this app, check your balance again.</p>
     </section>
     <div className="grid gap-6 xl:grid-cols-2">
-      <form onSubmit={event => { void createPreview(event); }} className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 sm:p-6">
+      <form onSubmit={event => { event.preventDefault(); void createPreview(); }} className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 sm:p-6">
         <h3 className="text-lg font-bold text-gray-950">Compose message</h3>
         <label className="block text-sm font-semibold text-gray-800">Send to<select value={fellowship} disabled={busy} onChange={event => { setFellowship(event.target.value); compose(); }} className={`${inputClass} mt-2`}><option value="all">Entire church</option>{FELLOWSHIPS.map(name => <option key={name}>{name}</option>)}</select></label>
         <div className="rounded-xl bg-slate-50 p-4"><p className="text-lg font-bold text-gray-950">{audience ? audience.recipients.toLocaleString() : '—'} phone numbers</p><p className="mt-1 text-xs leading-5 text-gray-600">Active brethren only. Archived and merged records are excluded. Shared phone numbers receive one message.{audience ? ` ${audience.missingPhone} missing or invalid contacts; ${audience.duplicatePhone} repeated contacts excluded.` : ''}</p></div>
@@ -97,14 +119,15 @@ export default function BulkSms() {
         <p className="text-sm text-gray-600">Sender: <strong className="text-gray-950">{workspace?.sender || 'CEYC ARC'}</strong></p>
         <button disabled={busy || !workspace || !outgoingMessage || outgoingMessage.length > 1600 || !audience?.recipients} className="rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Processing…' : 'Preview message'}</button>
       </form>
-      <section aria-label="Message preview" className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:p-6">
+      <section ref={previewSection} aria-label="Message preview" className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:p-6">
         <h3 className="text-lg font-bold text-gray-950">Review before sending</h3>
         {preview ? <div className="mt-5 space-y-5">
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wide text-blue-800">{preview.sender}</p><p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-gray-900">{preview.message}</p></div>
-          <dl className="grid grid-cols-2 gap-4 text-sm"><div><dt className="text-gray-600">Audience</dt><dd className="mt-1 font-semibold text-gray-950">{preview.fellowship || 'Entire church'}</dd></div><div><dt className="text-gray-600">Recipients</dt><dd className="mt-1 font-semibold text-gray-950">{preview.recipient_count} unique numbers</dd></div><div><dt className="text-gray-600">Estimated SMS parts</dt><dd className="mt-1 font-semibold text-gray-950">{preview.recipient_count * preview.segments}</dd></div><div><dt className="text-gray-600">Status</dt><dd className="mt-1 font-semibold text-gray-950">{statusLabel(preview)}</dd></div></dl>
+          <dl className="grid grid-cols-2 gap-4 text-sm"><div><dt className="text-gray-600">Audience</dt><dd className="mt-1 font-semibold text-gray-950">{preview.fellowship || 'Entire church'}</dd></div><div><dt className="text-gray-600">Recipients</dt><dd className="mt-1 font-semibold text-gray-950">{preview.recipient_count} unique numbers</dd></div><div><dt className="text-gray-600">Estimated SMS parts</dt><dd className="mt-1 font-semibold text-gray-950">{preview.recipient_count * preview.segments}</dd></div><div><dt className="text-gray-600">Status</dt><dd className="mt-1 font-semibold text-gray-950">{statusLabel(preview, now)}</dd></div></dl>
           <p className="text-xs leading-5 text-gray-600">{preview.segments} {preview.segments === 1 ? 'part' : 'parts'} per recipient. Final charges depend on your provider plan and destinations. Provider acceptance does not confirm handset delivery.</p>
           {preview.recipients && <details className="rounded-xl border border-blue-200 bg-white p-3"><summary className="cursor-pointer text-sm font-semibold text-blue-900">View recipient list</summary><ul className="mt-3 max-h-52 space-y-2 overflow-y-auto text-sm">{preview.recipients.map(recipient => <li key={recipient.phone} className="flex flex-wrap justify-between gap-2 border-t border-gray-100 pt-2"><span>{recipient.name} <span className="text-gray-500">· {recipient.fellowship}</span></span><span className="font-mono text-gray-700">{recipient.phone}</span></li>)}</ul></details>}
-          {preview.status === 'draft' && <><p className="text-sm text-gray-700">Sending will use your SMSOnlineGH credits. Preview expires after 15 minutes.</p><button type="button" disabled={busy || !workspace?.configured} onClick={() => { void send(preview.id); }} className="w-full rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Sending…' : `Send to ${preview.recipient_count} numbers`}</button></>}
+          {sendFailure?.id === preview.id && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{sendFailure.message}</p>}
+          {preview.status === 'draft' && <>{needsRefresh ? <><p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-950">This preview needs refreshing before sending. Nothing has been sent. Refresh it, review the recipients and message, then click Send.</p><button type="button" disabled={busy} onClick={() => { void createPreview(); }} className="w-full rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Refreshing…' : 'Refresh preview'}</button></> : <><p className="text-sm text-gray-700">Nothing has been sent yet. Sending will use your SMSOnlineGH credits. Preview expires in {Math.max(1, Math.ceil((Date.parse(preview.created_at) + SMS_PREVIEW_TTL_MS - now) / 60000))} minutes.</p><button type="button" disabled={busy || !workspace?.configured} onClick={() => { void send(preview.id); }} className="w-full rounded-xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:opacity-50">{busy ? 'Sending…' : `Send to ${preview.recipient_count} numbers`}</button></>}</>}
           {['sending','uncertain'].includes(preview.status) && <p className="rounded-xl bg-amber-100 p-4 text-sm text-amber-950">Check SMSOnlineGH before creating another message. An interrupted or uncertain submission is never automatically sent again.</p>}
         </div> : <div className="mt-8 rounded-2xl border border-dashed border-blue-200 bg-white/70 p-8 text-center"><p className="font-semibold text-gray-800">Your message preview will appear here</p><p className="mt-2 text-sm leading-6 text-gray-600">Choose your recipients, write the message, then preview the exact text and recipient count.</p></div>}
       </section>
@@ -113,7 +136,7 @@ export default function BulkSms() {
       <h3 className="text-lg font-bold text-gray-950">Recent messages</h3><p className="mt-1 text-sm text-gray-600">Latest 30 messages and previews. Accepted means submitted to SMSOnlineGH.</p>
       {!workspace ? <p role="status" className="mt-5 text-sm text-gray-600">Loading SMS history…</p> : !workspace.history.length ? <p className="mt-5 text-sm text-gray-500">No bulk messages yet.</p> : <div className="mt-5 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs uppercase tracking-wide text-gray-500"><th className="px-2 py-3">Message / audience</th><th className="px-2 py-3">Status</th><th className="px-2 py-3">Results</th><th className="px-2 py-3">Administrator</th></tr></thead><tbody className="divide-y divide-gray-100">{workspace.history.map(campaign => <tr key={campaign.id}>
         <td className="min-w-64 max-w-sm px-2 py-4"><p className="font-semibold text-gray-950">{campaign.fellowship || 'Entire church'} · {campaign.recipient_count} numbers</p><p className="mt-1 line-clamp-2 break-words text-gray-700">{campaign.message}</p><p className="mt-2 text-xs text-gray-500">{new Date(campaign.created_at).toLocaleString('en-GB', { timeZone: 'Africa/Accra' })}</p></td>
-        <td className="min-w-40 px-2 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${['uncertain','sending'].includes(campaign.status) ? 'bg-amber-100 text-amber-900' : campaign.status === 'completed' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-700'}`}>{statusLabel(campaign)}</span>{campaign.status === 'ready' && <button type="button" disabled={busy || !workspace.configured} onClick={() => { void send(campaign.id); }} className="mt-3 block rounded-lg border border-blue-300 px-3 py-2 text-xs font-bold text-blue-800 disabled:opacity-50">Continue remaining {campaign.recipient_count - campaign.next_offset}</button>}{['sending','uncertain'].includes(campaign.status) && <p className="mt-2 max-w-52 text-xs text-amber-900">Review in SMSOnlineGH before sending again.</p>}</td>
+        <td className="min-w-40 px-2 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${['uncertain','sending'].includes(campaign.status) ? 'bg-amber-100 text-amber-900' : campaign.status === 'completed' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-700'}`}>{statusLabel(campaign, now)}</span>{campaign.status === 'draft' && <button type="button" disabled={busy} onClick={() => openDraft(campaign)} className="mt-3 block rounded-lg border border-blue-300 px-3 py-2 text-xs font-bold text-blue-800 disabled:opacity-50">Review draft</button>}{campaign.status === 'ready' && <button type="button" disabled={busy || !workspace.configured} onClick={() => { void send(campaign.id); }} className="mt-3 block rounded-lg border border-blue-300 px-3 py-2 text-xs font-bold text-blue-800 disabled:opacity-50">Continue remaining {campaign.recipient_count - campaign.next_offset}</button>}{['sending','uncertain'].includes(campaign.status) && <p className="mt-2 max-w-52 text-xs text-amber-900">Review in SMSOnlineGH before sending again.</p>}</td>
         <td className="min-w-40 px-2 py-4 text-xs leading-6 text-gray-700">{campaign.accepted} accepted<br />{campaign.rejected} rejected · {campaign.uncertain} uncertain<br />{campaign.skipped} skipped</td><td className="px-2 py-4 text-xs text-gray-600">{campaign.sent_by || campaign.created_by}</td>
       </tr>)}</tbody></table></div>}
     </section>

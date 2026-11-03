@@ -32,6 +32,18 @@ export function validateSmsMessage(value: unknown): string {
 }
 export interface SmsRosterMember { id: string; name: string; phone?: string | null; fellowship: string; is_active?: boolean; merged_into_id?: string | null }
 export interface BulkSmsRecipient { memberId: string; name: string; phone: string; fellowship: string }
+export const SMS_PREVIEW_TTL_MS = 15 * 60 * 1000;
+export function smsPreviewExpired(createdAt: string, now = Date.now()): boolean {
+  const created = Date.parse(createdAt);
+  return !Number.isFinite(created) || now >= created + SMS_PREVIEW_TTL_MS;
+}
+export function smsDraftIssue(campaign: { created_at: string; sender: string; recipients: BulkSmsRecipient[] }, current: BulkSmsRecipient[], sender: string, now = Date.now()) {
+  if (smsPreviewExpired(campaign.created_at, now)) return { code: 'PREVIEW_EXPIRED', error: 'This preview expired after 15 minutes. Nothing was sent. Refresh the preview, review it, then click Send.' };
+  if (sender !== campaign.sender) return { code: 'SMS_SETTINGS_CHANGED', error: 'The SMS sender changed. Nothing was sent. Refresh the preview and review the new sender before sending.' };
+  const signature = (recipients: BulkSmsRecipient[]) => JSON.stringify(recipients.map(recipient => [recipient.memberId, recipient.phone]).sort(([a], [b]) => a.localeCompare(b)));
+  if (signature(current) !== signature(campaign.recipients)) return { code: 'AUDIENCE_CHANGED', error: 'The recipient list changed. Nothing was sent. Refresh the preview and review the updated recipients before sending.' };
+  return null;
+}
 export function bulkSmsRecipients(members: SmsRosterMember[], fellowship: string | null) {
   const phones = new Set<string>();
   const recipients: BulkSmsRecipient[] = [];
