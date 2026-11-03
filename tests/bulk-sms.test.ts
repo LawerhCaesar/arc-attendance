@@ -1,7 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { SMS_PREVIEW_TTL_MS, bulkSmsRecipients, smsDraftIssue, smsMessageInfo, smsPreviewExpired, standardSmsPunctuation, validateSmsMessage } from '../lib/bulk-sms';
+import { SMS_PREVIEW_TTL_MS, bulkSmsRecipients, smsCampaignStatusDetail, smsCampaignStatusLabel, smsDraftIssue, smsMessageInfo, smsPreviewExpired, smsReviewRecipients, standardSmsPunctuation, validateSmsMessage, type BulkSmsCampaign } from '../lib/bulk-sms';
 import { fetchSmsBalance, submitBulkSms } from '../lib/bulk-sms-provider';
+
+test('a mostly accepted campaign shows submission success with a specific unconfirmed count', () => {
+  const campaign: Pick<BulkSmsCampaign, 'status' | 'created_at' | 'accepted' | 'uncertain' | 'rejected' | 'next_offset' | 'recipient_count'> = {
+    status: 'uncertain', created_at: '2026-11-03T09:28:33Z', accepted: 212, uncertain: 1, rejected: 0, next_offset: 213, recipient_count: 213,
+  };
+  assert.equal(smsCampaignStatusLabel(campaign), 'Submitted — 1 unconfirmed');
+  assert.match(smsCampaignStatusDetail(campaign)!, /212 of 213 numbers were accepted/);
+  assert.match(smsCampaignStatusDetail(campaign)!, /Only 1 submission is unconfirmed/);
+  assert.match(smsCampaignStatusDetail(campaign)!, /do not resend the entire message/);
+  assert.equal(smsCampaignStatusLabel({ ...campaign, accepted: 0, uncertain: 213 }), 'Submission unconfirmed');
+  assert.equal(smsCampaignStatusLabel({ ...campaign, accepted: 12, next_offset: 13 }), 'Partly submitted — 1 unconfirmed');
+  assert.match(smsCampaignStatusDetail({ ...campaign, accepted: 12, next_offset: 13 })!, /200 numbers have not been processed/);
+  assert.equal(smsCampaignStatusLabel({ ...campaign, status: 'completed', accepted: 213, uncertain: 0 }), 'Submitted');
+  assert.equal(smsCampaignStatusLabel({ ...campaign, status: 'completed', accepted: 212, uncertain: 0, rejected: 1 }), 'Submitted — 1 rejected');
+  assert.equal(smsCampaignStatusLabel({ ...campaign, status: 'completed', accepted: 0, uncertain: 0, rejected: 213 }), 'None accepted');
+});
+
+test('recipient review identifies only unconfirmed or rejected people and excludes provider identifiers', () => {
+  const recipients = [
+    { memberId: 'a', name: 'Test Accepted', fellowship: 'Shalach', phone: '+233201234567' },
+    { memberId: 'b', name: 'Test Unconfirmed', fellowship: 'Pleroma', phone: '+233241234567' },
+    { memberId: 'c', name: 'Test Rejected', fellowship: 'Pleroma', phone: '+233271234567' },
+  ];
+  assert.deepEqual(smsReviewRecipients(recipients, [
+    { phone: recipients[0].phone, status: 'accepted', messageId: 'private-provider-id' },
+    { phone: recipients[1].phone, status: 'uncertain', messageId: 'private-unconfirmed-id' },
+    { phone: recipients[2].phone, status: 'rejected' },
+  ]), [
+    { name: 'Test Unconfirmed', fellowship: 'Pleroma', phone: '+233241234567', status: 'uncertain' },
+    { name: 'Test Rejected', fellowship: 'Pleroma', phone: '+233271234567', status: 'rejected' },
+  ]);
+});
 
 test('drafts expire at 15 minutes and give a specific refresh reason before submission', () => {
   const created = Date.parse('2026-11-03T08:56:10Z');

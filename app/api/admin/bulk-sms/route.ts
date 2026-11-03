@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { smsSettings } from '@/lib/integration-settings';
 import { FELLOWSHIPS } from '@/lib/fellowships';
 import { fetchAllRows } from '@/lib/pagination';
-import { bulkSmsRecipients, campaignColumns, SMS_BATCH_SIZE, smsDraftIssue, smsMessageInfo, validateSmsMessage, type BulkSmsCampaign, type BulkSmsRecipient, type SmsOutcome, type SmsRosterMember } from '@/lib/bulk-sms';
+import { bulkSmsRecipients, campaignColumns, SMS_BATCH_SIZE, smsDraftIssue, smsMessageInfo, smsReviewRecipients, validateSmsMessage, type BulkSmsCampaign, type BulkSmsRecipient, type SmsOutcome, type SmsRosterMember } from '@/lib/bulk-sms';
 import { submitBulkSms } from '@/lib/bulk-sms-provider';
 
 export const dynamic = 'force-dynamic';
@@ -22,10 +22,11 @@ async function roster(fellowship: string | null) {
     return query;
   });
 }
-function publicCampaign(campaign: StoredCampaign) {
+function publicCampaign(campaign: StoredCampaign, includeDraftRecipients = true) {
   // Recipient snapshots and provider identifiers stay in the protected history.
   const { recipients, results: _results, ...summary } = campaign;
-  return { ...summary, recipients: campaign.status === 'draft' ? recipients : undefined };
+  return { ...summary, recipients: includeDraftRecipients && campaign.status === 'draft' ? recipients : undefined,
+    review_recipients: smsReviewRecipients(recipients, _results) };
 }
 
 export async function GET() {
@@ -35,11 +36,11 @@ export async function GET() {
     const admin = getSupabaseAdmin(); if (!admin) return unavailable();
     const [settings, history, members] = await Promise.all([
       smsSettings(),
-      admin.from('bulk_sms_campaigns').select(campaignColumns).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(30),
+      admin.from('bulk_sms_campaigns').select(`${campaignColumns},recipients,results`).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(30),
       roster(null),
     ]);
     if (history.error) return unavailable();
-    return NextResponse.json({ configured: Boolean(settings.apiKey && settings.sender), sender: settings.sender, history: history.data,
+    return NextResponse.json({ configured: Boolean(settings.apiKey && settings.sender), sender: settings.sender, history: history.data.map(campaign => publicCampaign(campaign, false)),
       audiences: [null, ...FELLOWSHIPS].map(fellowship => {
         const { recipients, missingPhone, duplicatePhone } = bulkSmsRecipients(members, fellowship);
         return { fellowship, recipients: recipients.length, missingPhone, duplicatePhone };
